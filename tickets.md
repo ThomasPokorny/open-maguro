@@ -14,11 +14,13 @@
 - [x] TaskExecution read endpoints (handler/service/repo/dto)
 - [x] Create CLAUDE.md
 
-## Phase 2: Scheduling & Execution Engine
-- [ ] Cron scheduler for enabled AgentTasks
-- [ ] Claude Code SDK integration for agent execution
-- [ ] Execution lifecycle management (pending -> running -> success/failure/timeout)
-- [ ] Timeout enforcement
+## Phase 2: Scheduling & Execution Engine (done)
+- [x] Cron scheduler for enabled AgentTasks (robfig/cron/v3)
+- [x] Claude CLI integration for agent execution (`claude --print --output-format json`)
+- [x] Execution lifecycle management (pending -> running -> success/failure/timeout)
+- [x] Timeout enforcement (context.WithTimeout per task)
+- [x] Scheduler reload on task create/update/delete (callback pattern)
+- [x] Graceful shutdown (stop scheduler -> drain HTTP -> close pool)
 
 ## Phase 3: Polish
 - [ ] Error handling improvements (typed errors, consistent responses)

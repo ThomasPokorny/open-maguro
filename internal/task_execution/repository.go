@@ -6,10 +6,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/sqlcgen"
 )
+
+// UpdateStatusParams holds the parameters for updating a task execution's status.
+type UpdateStatusParams struct {
+	ID         uuid.UUID
+	Status     domain.ExecutionStatus
+	StartedAt  pgtype.Timestamptz
+	FinishedAt pgtype.Timestamptz
+	Summary    pgtype.Text
+	Error      pgtype.Text
+}
 
 type PostgresRepository struct {
 	pool    *pgxpool.Pool
@@ -45,6 +56,32 @@ func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID 
 		executions[i] = *toDomain(row)
 	}
 	return executions, nil
+}
+
+func (r *PostgresRepository) Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus) (*domain.TaskExecution, error) {
+	row, err := r.queries.CreateTaskExecution(ctx, sqlcgen.CreateTaskExecutionParams{
+		AgentTaskID: agentTaskID,
+		Status:      sqlcgen.ExecutionStatus(status),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create task execution: %w", err)
+	}
+	return toDomain(row), nil
+}
+
+func (r *PostgresRepository) UpdateStatus(ctx context.Context, params UpdateStatusParams) (*domain.TaskExecution, error) {
+	row, err := r.queries.UpdateTaskExecutionStatus(ctx, sqlcgen.UpdateTaskExecutionStatusParams{
+		ID:         params.ID,
+		Status:     sqlcgen.ExecutionStatus(params.Status),
+		StartedAt:  params.StartedAt,
+		FinishedAt: params.FinishedAt,
+		Summary:    params.Summary,
+		Error:      params.Error,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update task execution status: %w", err)
+	}
+	return toDomain(row), nil
 }
 
 func toDomain(row sqlcgen.TaskExecution) *domain.TaskExecution {

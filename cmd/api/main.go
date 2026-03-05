@@ -15,7 +15,9 @@ import (
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/config"
 	"open-maguro/internal/database"
+	"open-maguro/internal/executor"
 	"open-maguro/internal/router"
+	"open-maguro/internal/scheduler"
 	"open-maguro/internal/task_execution"
 )
 
@@ -38,13 +40,21 @@ func main() {
 
 	validate := validator.New()
 
-	// Wire up agent_task
+	// Wire up repositories
 	agentTaskRepo := agent_task.NewPostgresRepository(pool)
+	taskExecRepo := task_execution.NewPostgresRepository(pool)
+
+	// Wire up executor and scheduler
+	exec := executor.New(taskExecRepo)
+	sched := scheduler.New(agentTaskRepo, exec)
+
+	// Wire up agent_task (with scheduler reload callback)
 	agentTaskService := agent_task.NewService(agentTaskRepo)
-	agentTaskHandler := agent_task.NewHandler(agentTaskService, validate)
+	agentTaskHandler := agent_task.NewHandler(agentTaskService, validate,
+		agent_task.WithOnTaskChanged(sched.Reload),
+	)
 
 	// Wire up task_execution
-	taskExecRepo := task_execution.NewPostgresRepository(pool)
 	taskExecService := task_execution.NewService(taskExecRepo)
 	taskExecHandler := task_execution.NewHandler(taskExecService)
 
@@ -58,12 +68,19 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Start scheduler
+	if err := sched.Start(); err != nil {
+		slog.Error("failed to start scheduler", "error", err)
+		os.Exit(1)
+	}
+
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-		slog.Info("shutting down server")
-		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 10*time.Second)
+		slog.Info("shutting down")
+		sched.Stop()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		srv.Shutdown(shutdownCtx)
 	}()

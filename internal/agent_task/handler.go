@@ -11,12 +11,31 @@ import (
 )
 
 type Handler struct {
-	service  *Service
-	validate *validator.Validate
+	service       *Service
+	validate      *validator.Validate
+	onTaskChanged func()
 }
 
-func NewHandler(service *Service, validate *validator.Validate) *Handler {
-	return &Handler{service: service, validate: validate}
+type HandlerOption func(*Handler)
+
+func WithOnTaskChanged(fn func()) HandlerOption {
+	return func(h *Handler) {
+		h.onTaskChanged = fn
+	}
+}
+
+func NewHandler(service *Service, validate *validator.Validate, opts ...HandlerOption) *Handler {
+	h := &Handler{service: service, validate: validate}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+func (h *Handler) notifyTaskChanged() {
+	if h.onTaskChanged != nil {
+		go h.onTaskChanged()
+	}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -49,6 +68,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, ToResponse(task))
+	h.notifyTaskChanged()
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +123,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, ToResponse(task))
+	h.notifyTaskChanged()
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -119,6 +140,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	h.notifyTaskChanged()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

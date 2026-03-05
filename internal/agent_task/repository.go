@@ -97,6 +97,19 @@ func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (r *PostgresRepository) ListEnabled(ctx context.Context) ([]domain.AgentTask, error) {
+	rows, err := r.queries.ListEnabledAgentTasks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list enabled agent tasks: %w", err)
+	}
+
+	tasks := make([]domain.AgentTask, len(rows))
+	for i, row := range rows {
+		tasks[i] = *toDomain(row)
+	}
+	return tasks, nil
+}
+
 func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	return &domain.AgentTask{
 		ID:             row.ID,
