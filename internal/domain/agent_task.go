@@ -6,11 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	TaskTypeCron    = "cron"
+	TaskTypeOneTime = "one_time"
+)
+
 type AgentTask struct {
 	ID             uuid.UUID
 	Name           string
-	CronExpression string
+	TaskType       string
+	CronExpression *string
 	Prompt         string
+	RunAt          *time.Time
 	Enabled        bool
 	TimeoutSeconds int32
 	CreatedAt      time.Time

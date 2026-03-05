@@ -60,21 +60,24 @@ func (ns NullExecutionStatus) Value() (driver.Value, error) {
 type AgentTask struct {
 	ID             uuid.UUID          `json:"id"`
 	Name           string             `json:"name"`
-	CronExpression string             `json:"cron_expression"`
+	CronExpression pgtype.Text        `json:"cron_expression"`
 	Prompt         string             `json:"prompt"`
 	Enabled        bool               `json:"enabled"`
 	TimeoutSeconds int32              `json:"timeout_seconds"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	TaskType       string             `json:"task_type"`
+	RunAt          pgtype.Timestamptz `json:"run_at"`
 }
 
 type TaskExecution struct {
 	ID          uuid.UUID          `json:"id"`
-	AgentTaskID uuid.UUID          `json:"agent_task_id"`
+	AgentTaskID pgtype.UUID        `json:"agent_task_id"`
 	Status      ExecutionStatus    `json:"status"`
 	StartedAt   pgtype.Timestamptz `json:"started_at"`
 	FinishedAt  pgtype.Timestamptz `json:"finished_at"`
 	Summary     pgtype.Text        `json:"summary"`
 	Error       pgtype.Text        `json:"error"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	TaskName    pgtype.Text        `json:"task_name"`
 }

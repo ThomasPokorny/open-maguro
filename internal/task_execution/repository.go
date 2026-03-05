@@ -46,7 +46,7 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 }
 
 func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) ([]domain.TaskExecution, error) {
-	rows, err := r.queries.ListTaskExecutionsByAgentTaskID(ctx, agentTaskID)
+	rows, err := r.queries.ListTaskExecutionsByAgentTaskID(ctx, pgtype.UUID{Bytes: agentTaskID, Valid: true})
 	if err != nil {
 		return nil, fmt.Errorf("list task executions: %w", err)
 	}
@@ -58,10 +58,11 @@ func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID 
 	return executions, nil
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus) (*domain.TaskExecution, error) {
+func (r *PostgresRepository) Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus, taskName string) (*domain.TaskExecution, error) {
 	row, err := r.queries.CreateTaskExecution(ctx, sqlcgen.CreateTaskExecutionParams{
-		AgentTaskID: agentTaskID,
+		AgentTaskID: pgtype.UUID{Bytes: agentTaskID, Valid: true},
 		Status:      sqlcgen.ExecutionStatus(status),
+		TaskName:    pgtype.Text{String: taskName, Valid: taskName != ""},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create task execution: %w", err)
@@ -86,10 +87,17 @@ func (r *PostgresRepository) UpdateStatus(ctx context.Context, params UpdateStat
 
 func toDomain(row sqlcgen.TaskExecution) *domain.TaskExecution {
 	exec := &domain.TaskExecution{
-		ID:          row.ID,
-		AgentTaskID: row.AgentTaskID,
-		Status:      domain.ExecutionStatus(row.Status),
-		CreatedAt:   row.CreatedAt.Time,
+		ID:        row.ID,
+		Status:    domain.ExecutionStatus(row.Status),
+		CreatedAt: row.CreatedAt.Time,
+	}
+	if row.AgentTaskID.Valid {
+		id := uuid.UUID(row.AgentTaskID.Bytes)
+		exec.AgentTaskID = &id
+	}
+	if row.TaskName.Valid {
+		s := row.TaskName.String
+		exec.TaskName = &s
 	}
 	if row.StartedAt.Valid {
 		t := row.StartedAt.Time

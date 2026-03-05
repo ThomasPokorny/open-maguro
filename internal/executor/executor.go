@@ -16,7 +16,7 @@ import (
 
 // ExecutionRepository defines the DB operations the executor needs.
 type ExecutionRepository interface {
-	Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus) (*domain.TaskExecution, error)
+	Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus, taskName string) (*domain.TaskExecution, error)
 	UpdateStatus(ctx context.Context, params task_execution.UpdateStatusParams) (*domain.TaskExecution, error)
 }
 
@@ -29,13 +29,13 @@ func New(repo ExecutionRepository) *Executor {
 }
 
 // Run executes a single agent task. Safe to call from a goroutine.
-// It creates the execution record, runs the claude CLI, and records the result.
-func (e *Executor) Run(ctx context.Context, task domain.AgentTask) {
+// If onComplete is non-nil, it is called after execution finishes (used for auto-delete).
+func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete func()) {
 	logger := slog.With("task_id", task.ID, "task_name", task.Name)
 	logger.Info("starting task execution")
 
 	// Create execution record (pending)
-	execution, err := e.repo.Create(ctx, task.ID, domain.StatusPending)
+	execution, err := e.repo.Create(ctx, task.ID, domain.StatusPending, task.Name)
 	if err != nil {
 		logger.Error("failed to create execution record", "error", err)
 		return
@@ -103,6 +103,10 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask) {
 
 	if _, err := e.repo.UpdateStatus(ctx, updateParams); err != nil {
 		execLogger.Error("failed to update execution result", "error", err)
+	}
+
+	if onComplete != nil {
+		onComplete()
 	}
 }
 

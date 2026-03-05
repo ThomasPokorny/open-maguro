@@ -127,6 +127,35 @@ Response `204`: No content.
 
 ---
 
+### Scheduled Tasks (One-Time)
+
+#### Create Scheduled Task
+
+```
+POST /api/v1/scheduled-tasks
+```
+
+Request body:
+```json
+{
+  "name": "Send Slack reminder",
+  "prompt": "Send a message to #general on Slack saying 'Team standup in 5 minutes'",
+  "run_at": "2026-03-05T13:00:00Z",
+  "timeout_seconds": 60
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | Yes | — | Human-readable task name |
+| `prompt` | string | Yes | — | Instruction for the Claude Code SDK agent |
+| `run_at` | string (RFC3339) | Yes | — | When to execute the task |
+| `timeout_seconds` | int | No | `60` | Max execution time (1–3600) |
+
+Response `201`: Scheduled task object. The task auto-deletes after execution, but the execution log persists.
+
+---
+
 ### Task Executions
 
 #### List Executions for an Agent Task
@@ -183,3 +212,13 @@ sqlc generate
 # Build
 go build ./...
 ```
+
+To test it end-to-end:
+docker compose up -d
+goose -dir db/migrations postgres "$DATABASE_URL" up
+go run cmd/api/main.go
+
+# Create a task that fires every minute
+curl -X POST localhost:8080/api/v1/agent-tasks \
+-H 'Content-Type: application/json' \
+-d '{"name":"test","cron_expression":"*/1 * * * *","prompt":"Say hello"}'

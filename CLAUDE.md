@@ -30,10 +30,11 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - internal/domain/ — entity structs (no dependencies)
 - internal/agent_task/ — AgentTask feature (handler, service, repo, DTOs)
 - internal/task_execution/ — TaskExecution feature
+- internal/scheduled_task/ — One-time scheduled task endpoint
 - internal/config/ — configuration loading
 - internal/database/ — database connection pool
 - internal/executor/ — Claude CLI execution (shells out to `claude` CLI)
-- internal/scheduler/ — Cron scheduler (loads enabled tasks, triggers executor)
+- internal/scheduler/ — Cron + one-time task scheduler (triggers executor)
 - internal/router/ — Chi router setup
 - internal/sqlcgen/ — sqlc generated code (do not edit manually)
 - db/migrations/ — Goose SQL migration files
@@ -46,6 +47,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - GET /api/v1/agent-tasks/{id} — get agent task
 - PATCH /api/v1/agent-tasks/{id} — partial update agent task
 - DELETE /api/v1/agent-tasks/{id} — delete agent task
+- POST /api/v1/scheduled-tasks — create one-time scheduled task (auto-deletes after execution)
 - GET /api/v1/agent-tasks/{taskId}/executions — list executions for a task
 - GET /api/v1/executions/{id} — get execution by id
 

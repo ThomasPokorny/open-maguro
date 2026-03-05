@@ -22,6 +22,14 @@
 - [x] Scheduler reload on task create/update/delete (callback pattern)
 - [x] Graceful shutdown (stop scheduler -> drain HTTP -> close pool)
 
+## Phase 2.5: One-Time Scheduled Tasks (done)
+- [x] Migration 003: add task_type, run_at to agent_tasks; make cron_expression nullable
+- [x] Migration 003: change task_executions FK to SET NULL, add task_name column
+- [x] Separate endpoint POST /api/v1/scheduled-tasks for one-time tasks
+- [x] Timer-based scheduling (time.AfterFunc) for one-time tasks
+- [x] Auto-delete task after execution (execution logs persist)
+- [x] Scheduler handles both cron and one-time tasks
+
 ## Phase 3: Polish
 - [ ] Error handling improvements (typed errors, consistent responses)
 - [ ] Pagination for list endpoints

@@ -45,7 +45,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	// Apply partial updates
 	merged := UpdateRequest{
 		Name:           &existing.Name,
-		CronExpression: &existing.CronExpression,
+		CronExpression: existing.CronExpression,
 		Prompt:         &existing.Prompt,
 		Enabled:        &existing.Enabled,
 		TimeoutSeconds: &existing.TimeoutSeconds,

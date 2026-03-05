@@ -9,20 +9,21 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createAgentTask = `-- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, timeout_seconds)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at
+INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, timeout_seconds, task_type)
+VALUES ($1, $2, $3, $4, $5, 'cron')
+RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at
 `
 
 type CreateAgentTaskParams struct {
-	Name           string `json:"name"`
-	CronExpression string `json:"cron_expression"`
-	Prompt         string `json:"prompt"`
-	Enabled        bool   `json:"enabled"`
-	TimeoutSeconds int32  `json:"timeout_seconds"`
+	Name           string      `json:"name"`
+	CronExpression pgtype.Text `json:"cron_expression"`
+	Prompt         string      `json:"prompt"`
+	Enabled        bool        `json:"enabled"`
+	TimeoutSeconds int32       `json:"timeout_seconds"`
 }
 
 func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams) (AgentTask, error) {
@@ -43,6 +44,44 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskType,
+		&i.RunAt,
+	)
+	return i, err
+}
+
+const createScheduledTask = `-- name: CreateScheduledTask :one
+INSERT INTO agent_tasks (name, prompt, run_at, timeout_seconds, task_type)
+VALUES ($1, $2, $3, $4, 'one_time')
+RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at
+`
+
+type CreateScheduledTaskParams struct {
+	Name           string             `json:"name"`
+	Prompt         string             `json:"prompt"`
+	RunAt          pgtype.Timestamptz `json:"run_at"`
+	TimeoutSeconds int32              `json:"timeout_seconds"`
+}
+
+func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTaskParams) (AgentTask, error) {
+	row := q.db.QueryRow(ctx, createScheduledTask,
+		arg.Name,
+		arg.Prompt,
+		arg.RunAt,
+		arg.TimeoutSeconds,
+	)
+	var i AgentTask
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CronExpression,
+		&i.Prompt,
+		&i.Enabled,
+		&i.TimeoutSeconds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TaskType,
+		&i.RunAt,
 	)
 	return i, err
 }
@@ -57,7 +96,7 @@ func (q *Queries) DeleteAgentTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const getAgentTask = `-- name: GetAgentTask :one
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at FROM agent_tasks WHERE id = $1
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks WHERE id = $1
 `
 
 func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, error) {
@@ -72,12 +111,14 @@ func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, er
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskType,
+		&i.RunAt,
 	)
 	return i, err
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at FROM agent_tasks ORDER BY created_at DESC
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
@@ -98,6 +139,8 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 			&i.TimeoutSeconds,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.TaskType,
+			&i.RunAt,
 		); err != nil {
 			return nil, err
 		}
@@ -109,12 +152,14 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 	return items, nil
 }
 
-const listEnabledAgentTasks = `-- name: ListEnabledAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at FROM agent_tasks WHERE enabled = true ORDER BY created_at DESC
+const listEnabledCronTasks = `-- name: ListEnabledCronTasks :many
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks
+WHERE enabled = true AND task_type = 'cron'
+ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledAgentTasks(ctx context.Context) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listEnabledAgentTasks)
+func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listEnabledCronTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +176,45 @@ func (q *Queries) ListEnabledAgentTasks(ctx context.Context) ([]AgentTask, error
 			&i.TimeoutSeconds,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.TaskType,
+			&i.RunAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingScheduledTasks = `-- name: ListPendingScheduledTasks :many
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks
+WHERE enabled = true AND task_type = 'one_time'
+ORDER BY run_at ASC
+`
+
+func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listPendingScheduledTasks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentTask{}
+	for rows.Next() {
+		var i AgentTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CronExpression,
+			&i.Prompt,
+			&i.Enabled,
+			&i.TimeoutSeconds,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TaskType,
+			&i.RunAt,
 		); err != nil {
 			return nil, err
 		}
@@ -151,16 +235,16 @@ SET name = $2,
     timeout_seconds = $6,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at
+RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at
 `
 
 type UpdateAgentTaskParams struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	CronExpression string    `json:"cron_expression"`
-	Prompt         string    `json:"prompt"`
-	Enabled        bool      `json:"enabled"`
-	TimeoutSeconds int32     `json:"timeout_seconds"`
+	ID             uuid.UUID   `json:"id"`
+	Name           string      `json:"name"`
+	CronExpression pgtype.Text `json:"cron_expression"`
+	Prompt         string      `json:"prompt"`
+	Enabled        bool        `json:"enabled"`
+	TimeoutSeconds int32       `json:"timeout_seconds"`
 }
 
 func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams) (AgentTask, error) {
@@ -182,6 +266,8 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TaskType,
+		&i.RunAt,
 	)
 	return i, err
 }

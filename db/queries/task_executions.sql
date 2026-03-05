@@ -7,8 +7,8 @@ WHERE agent_task_id = $1
 ORDER BY created_at DESC;
 
 -- name: CreateTaskExecution :one
-INSERT INTO task_executions (agent_task_id, status)
-VALUES ($1, $2)
+INSERT INTO task_executions (agent_task_id, status, task_name)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: UpdateTaskExecutionStatus :one

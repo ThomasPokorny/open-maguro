@@ -3,9 +3,11 @@ package agent_task
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/sqlcgen"
@@ -35,7 +37,7 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 
 	row, err := r.queries.CreateAgentTask(ctx, sqlcgen.CreateAgentTaskParams{
 		Name:           params.Name,
-		CronExpression: params.CronExpression,
+		CronExpression: pgtype.Text{String: params.CronExpression, Valid: true},
 		Prompt:         params.Prompt,
 		Enabled:        enabled,
 		TimeoutSeconds: timeout,
@@ -75,7 +77,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 	row, err := r.queries.UpdateAgentTask(ctx, sqlcgen.UpdateAgentTaskParams{
 		ID:             id,
 		Name:           *params.Name,
-		CronExpression: *params.CronExpression,
+		CronExpression: pgtype.Text{String: *params.CronExpression, Valid: true},
 		Prompt:         *params.Prompt,
 		Enabled:        *params.Enabled,
 		TimeoutSeconds: *params.TimeoutSeconds,
@@ -98,9 +100,9 @@ func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *PostgresRepository) ListEnabled(ctx context.Context) ([]domain.AgentTask, error) {
-	rows, err := r.queries.ListEnabledAgentTasks(ctx)
+	rows, err := r.queries.ListEnabledCronTasks(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list enabled agent tasks: %w", err)
+		return nil, fmt.Errorf("list enabled cron tasks: %w", err)
 	}
 
 	tasks := make([]domain.AgentTask, len(rows))
@@ -110,15 +112,50 @@ func (r *PostgresRepository) ListEnabled(ctx context.Context) ([]domain.AgentTas
 	return tasks, nil
 }
 
+func (r *PostgresRepository) ListPendingScheduled(ctx context.Context) ([]domain.AgentTask, error) {
+	rows, err := r.queries.ListPendingScheduledTasks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list pending scheduled tasks: %w", err)
+	}
+
+	tasks := make([]domain.AgentTask, len(rows))
+	for i, row := range rows {
+		tasks[i] = *toDomain(row)
+	}
+	return tasks, nil
+}
+
+func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, timeoutSeconds int32) (*domain.AgentTask, error) {
+	row, err := r.queries.CreateScheduledTask(ctx, sqlcgen.CreateScheduledTaskParams{
+		Name:           name,
+		Prompt:         prompt,
+		RunAt:          pgtype.Timestamptz{Time: runAt, Valid: true},
+		TimeoutSeconds: timeoutSeconds,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create scheduled task: %w", err)
+	}
+	return toDomain(row), nil
+}
+
 func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
-	return &domain.AgentTask{
+	task := &domain.AgentTask{
 		ID:             row.ID,
 		Name:           row.Name,
-		CronExpression: row.CronExpression,
+		TaskType:       row.TaskType,
 		Prompt:         row.Prompt,
 		Enabled:        row.Enabled,
 		TimeoutSeconds: row.TimeoutSeconds,
 		CreatedAt:      row.CreatedAt.Time,
 		UpdatedAt:      row.UpdatedAt.Time,
 	}
+	if row.CronExpression.Valid {
+		s := row.CronExpression.String
+		task.CronExpression = &s
+	}
+	if row.RunAt.Valid {
+		t := row.RunAt.Time
+		task.RunAt = &t
+	}
+	return task
 }

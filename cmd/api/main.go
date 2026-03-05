@@ -17,6 +17,7 @@ import (
 	"open-maguro/internal/database"
 	"open-maguro/internal/executor"
 	"open-maguro/internal/router"
+	"open-maguro/internal/scheduled_task"
 	"open-maguro/internal/scheduler"
 	"open-maguro/internal/task_execution"
 )
@@ -46,7 +47,7 @@ func main() {
 
 	// Wire up executor and scheduler
 	exec := executor.New(taskExecRepo)
-	sched := scheduler.New(agentTaskRepo, exec)
+	sched := scheduler.New(agentTaskRepo, agentTaskRepo, exec)
 
 	// Wire up agent_task (with scheduler reload callback)
 	agentTaskService := agent_task.NewService(agentTaskRepo)
@@ -58,7 +59,13 @@ func main() {
 	taskExecService := task_execution.NewService(taskExecRepo)
 	taskExecHandler := task_execution.NewHandler(taskExecService)
 
-	r := router.New(agentTaskHandler, taskExecHandler)
+	// Wire up scheduled_task (with scheduler reload callback)
+	scheduledTaskService := scheduled_task.NewService(agentTaskRepo)
+	scheduledTaskHandler := scheduled_task.NewHandler(scheduledTaskService, validate,
+		scheduled_task.WithOnTaskChanged(sched.Reload),
+	)
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

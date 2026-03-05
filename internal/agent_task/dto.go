@@ -24,22 +24,26 @@ type UpdateRequest struct {
 }
 
 type Response struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	CronExpression string    `json:"cron_expression"`
-	Prompt         string    `json:"prompt"`
-	Enabled        bool      `json:"enabled"`
-	TimeoutSeconds int32     `json:"timeout_seconds"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	Name           string     `json:"name"`
+	TaskType       string     `json:"task_type"`
+	CronExpression *string    `json:"cron_expression,omitempty"`
+	Prompt         string     `json:"prompt"`
+	RunAt          *time.Time `json:"run_at,omitempty"`
+	Enabled        bool       `json:"enabled"`
+	TimeoutSeconds int32      `json:"timeout_seconds"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func ToResponse(t *domain.AgentTask) Response {
 	return Response{
 		ID:             t.ID,
 		Name:           t.Name,
+		TaskType:       t.TaskType,
 		CronExpression: t.CronExpression,
 		Prompt:         t.Prompt,
+		RunAt:          t.RunAt,
 		Enabled:        t.Enabled,
 		TimeoutSeconds: t.TimeoutSeconds,
 		CreatedAt:      t.CreatedAt,
