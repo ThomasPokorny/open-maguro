@@ -48,7 +48,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 		CronExpression: existing.CronExpression,
 		Prompt:         &existing.Prompt,
 		Enabled:        &existing.Enabled,
-		TimeoutSeconds: &existing.TimeoutSeconds,
 		MCPConfig:      existing.MCPConfig,
 	}
 	if req.Name != nil {
@@ -62,9 +61,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	}
 	if req.Enabled != nil {
 		merged.Enabled = req.Enabled
-	}
-	if req.TimeoutSeconds != nil {
-		merged.TimeoutSeconds = req.TimeoutSeconds
 	}
 	if req.MCPConfig != nil {
 		merged.MCPConfig = req.MCPConfig

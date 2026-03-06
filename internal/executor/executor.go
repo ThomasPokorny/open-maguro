@@ -3,7 +3,6 @@ package executor
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"os/exec"
 	"time"
@@ -23,10 +22,11 @@ type ExecutionRepository interface {
 type Executor struct {
 	repo            ExecutionRepository
 	globalMCPConfig string
+	allowedTools    []string
 }
 
-func New(repo ExecutionRepository, globalMCPConfig string) *Executor {
-	return &Executor{repo: repo, globalMCPConfig: globalMCPConfig}
+func New(repo ExecutionRepository, globalMCPConfig string, allowedTools []string) *Executor {
+	return &Executor{repo: repo, globalMCPConfig: globalMCPConfig, allowedTools: allowedTools}
 }
 
 // Run executes a single agent task. Safe to call from a goroutine.
@@ -57,20 +57,16 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 		return
 	}
 
-	// Execute claude CLI with timeout
-	timeout := time.Duration(task.TimeoutSeconds) * time.Second
-	execCtx, execCancel := context.WithTimeout(ctx, timeout)
-	defer execCancel()
-
 	// Use task-level MCP config, fall back to global
 	mcpConfig := e.globalMCPConfig
 	if task.MCPConfig != nil {
 		mcpConfig = *task.MCPConfig
 	}
 
-	stdout, stderr, runErr := e.runClaude(execCtx, task.Prompt, mcpConfig)
+	// Execute claude CLI (no timeout — agents run until completion)
+	stdout, stderr, runErr := e.runClaude(ctx, task.Prompt, mcpConfig)
 
-	// Record result (use parent ctx so DB write succeeds even after timeout)
+	// Record result
 	finishedAt := pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	updateParams := task_execution.UpdateStatusParams{
 		ID:         execution.ID,
@@ -79,17 +75,6 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 	}
 
 	switch {
-	case execCtx.Err() == context.DeadlineExceeded:
-		updateParams.Status = domain.StatusTimeout
-		updateParams.Error = pgtype.Text{
-			String: fmt.Sprintf("execution timed out after %d seconds", task.TimeoutSeconds),
-			Valid:  true,
-		}
-		if stdout != "" {
-			updateParams.Summary = pgtype.Text{String: stdout, Valid: true}
-		}
-		execLogger.Warn("task execution timed out")
-
 	case runErr != nil:
 		updateParams.Status = domain.StatusFailure
 		errMsg := stderr
@@ -121,6 +106,9 @@ func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig strin
 	args := []string{"--print", "--output-format", "json"}
 	if mcpConfig != "" {
 		args = append(args, "--mcp-config", mcpConfig)
+	}
+	for _, tool := range e.allowedTools {
+		args = append(args, "--allowedTools", tool)
 	}
 	args = append(args, "-p", prompt)
 

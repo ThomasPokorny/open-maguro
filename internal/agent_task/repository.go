@@ -30,10 +30,6 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 	if params.Enabled != nil {
 		enabled = *params.Enabled
 	}
-	timeout := int32(60)
-	if params.TimeoutSeconds != nil {
-		timeout = *params.TimeoutSeconds
-	}
 
 	mcpConfig := pgtype.Text{}
 	if params.MCPConfig != nil {
@@ -45,7 +41,6 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		CronExpression: pgtype.Text{String: params.CronExpression, Valid: true},
 		Prompt:         params.Prompt,
 		Enabled:        enabled,
-		TimeoutSeconds: timeout,
 		McpConfig:      mcpConfig,
 	})
 	if err != nil {
@@ -95,7 +90,6 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		CronExpression: cronExpr,
 		Prompt:         *params.Prompt,
 		Enabled:        *params.Enabled,
-		TimeoutSeconds: *params.TimeoutSeconds,
 		McpConfig:      mcpConfig,
 	})
 	if err != nil {
@@ -141,18 +135,17 @@ func (r *PostgresRepository) ListPendingScheduled(ctx context.Context) ([]domain
 	return tasks, nil
 }
 
-func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, timeoutSeconds int32, mcpConfigVal *string) (*domain.AgentTask, error) {
+func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfigVal *string) (*domain.AgentTask, error) {
 	mcpConfig := pgtype.Text{}
 	if mcpConfigVal != nil {
 		mcpConfig = pgtype.Text{String: *mcpConfigVal, Valid: true}
 	}
 
 	row, err := r.queries.CreateScheduledTask(ctx, sqlcgen.CreateScheduledTaskParams{
-		Name:           name,
-		Prompt:         prompt,
-		RunAt:          pgtype.Timestamptz{Time: runAt, Valid: true},
-		TimeoutSeconds: timeoutSeconds,
-		McpConfig:      mcpConfig,
+		Name:      name,
+		Prompt:    prompt,
+		RunAt:     pgtype.Timestamptz{Time: runAt, Valid: true},
+		McpConfig: mcpConfig,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create scheduled task: %w", err)
@@ -162,14 +155,13 @@ func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt s
 
 func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	task := &domain.AgentTask{
-		ID:             row.ID,
-		Name:           row.Name,
-		TaskType:       row.TaskType,
-		Prompt:         row.Prompt,
-		Enabled:        row.Enabled,
-		TimeoutSeconds: row.TimeoutSeconds,
-		CreatedAt:      row.CreatedAt.Time,
-		UpdatedAt:      row.UpdatedAt.Time,
+		ID:        row.ID,
+		Name:      row.Name,
+		TaskType:  row.TaskType,
+		Prompt:    row.Prompt,
+		Enabled:   row.Enabled,
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}
 	if row.CronExpression.Valid {
 		s := row.CronExpression.String

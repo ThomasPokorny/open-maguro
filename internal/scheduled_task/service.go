@@ -8,7 +8,7 @@ import (
 )
 
 type Repository interface {
-	CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, timeoutSeconds int32, mcpConfig *string) (*domain.AgentTask, error)
+	CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfig *string) (*domain.AgentTask, error)
 }
 
 type Service struct {
@@ -20,9 +20,5 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*domain.AgentTask, error) {
-	timeout := int32(60)
-	if req.TimeoutSeconds != nil {
-		timeout = *req.TimeoutSeconds
-	}
-	return s.repo.CreateScheduled(ctx, req.Name, req.Prompt, req.RunAt, timeout, req.MCPConfig)
+	return s.repo.CreateScheduled(ctx, req.Name, req.Prompt, req.RunAt, req.MCPConfig)
 }

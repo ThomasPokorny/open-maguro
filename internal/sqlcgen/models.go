@@ -63,7 +63,6 @@ type AgentTask struct {
 	CronExpression pgtype.Text        `json:"cron_expression"`
 	Prompt         string             `json:"prompt"`
 	Enabled        bool               `json:"enabled"`
-	TimeoutSeconds int32              `json:"timeout_seconds"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	TaskType       string             `json:"task_type"`

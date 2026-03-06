@@ -12,7 +12,6 @@ type CreateRequest struct {
 	CronExpression string  `json:"cron_expression" validate:"required"`
 	Prompt         string  `json:"prompt"          validate:"required"`
 	Enabled        *bool   `json:"enabled"`
-	TimeoutSeconds *int32  `json:"timeout_seconds" validate:"omitempty,min=1,max=3600"`
 	MCPConfig      *string `json:"mcp_config"`
 }
 
@@ -21,7 +20,6 @@ type UpdateRequest struct {
 	CronExpression *string `json:"cron_expression"`
 	Prompt         *string `json:"prompt"`
 	Enabled        *bool   `json:"enabled"`
-	TimeoutSeconds *int32  `json:"timeout_seconds" validate:"omitempty,min=1,max=3600"`
 	MCPConfig      *string `json:"mcp_config"`
 }
 
@@ -34,7 +32,6 @@ type Response struct {
 	RunAt          *time.Time `json:"run_at,omitempty"`
 	MCPConfig      *string    `json:"mcp_config,omitempty"`
 	Enabled        bool       `json:"enabled"`
-	TimeoutSeconds int32      `json:"timeout_seconds"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
@@ -49,7 +46,6 @@ func ToResponse(t *domain.AgentTask) Response {
 		RunAt:          t.RunAt,
 		MCPConfig:      t.MCPConfig,
 		Enabled:        t.Enabled,
-		TimeoutSeconds: t.TimeoutSeconds,
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 	}

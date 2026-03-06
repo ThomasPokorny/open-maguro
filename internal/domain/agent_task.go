@@ -20,7 +20,6 @@ type AgentTask struct {
 	RunAt          *time.Time
 	MCPConfig      *string
 	Enabled        bool
-	TimeoutSeconds int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

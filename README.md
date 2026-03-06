@@ -26,6 +26,7 @@ go run cmd/api/main.go
 | `PORT` | No | `8080` | HTTP server port |
 | `LOG_LEVEL` | No | `info` | Logging level |
 | `MCP_CONFIG_PATH` | No | — | Path to global MCP config file (mcp.json) |
+| `ALLOWED_TOOLS` | No | `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*` | Comma-separated tool patterns auto-approved for agents |
 
 ## API Endpoints
 
@@ -287,3 +288,5 @@ go run cmd/api/main.go
 curl -X POST localhost:8080/api/v1/agent-tasks \
 -H 'Content-Type: application/json' \
 -d '{"name":"test","cron_expression":"*/1 * * * *","prompt":"Say hello"}'
+
+execute migration: source .env && goose -dir db/migrations postgres "$DATABASE_URL" up 2>&1

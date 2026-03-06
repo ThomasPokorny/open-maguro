@@ -50,7 +50,7 @@ func main() {
 	taskExecRepo := task_execution.NewPostgresRepository(pool)
 
 	// Wire up executor and scheduler
-	exec := executor.New(taskExecRepo, cfg.MCPConfigPath)
+	exec := executor.New(taskExecRepo, cfg.MCPConfigPath, cfg.AllowedTools)
 	sched := scheduler.New(agentTaskRepo, agentTaskRepo, exec)
 
 	// Wire up agent_task (with scheduler reload callback)

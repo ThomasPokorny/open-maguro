@@ -25,6 +25,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - PORT (default: 8080): HTTP server port
 - LOG_LEVEL (default: info): Logging level
 - MCP_CONFIG_PATH: Path to global MCP config file (mcp.json). Used as default for all task executions unless overridden per-task.
+- ALLOWED_TOOLS (default: `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*`): Comma-separated list of tool patterns auto-approved for agent execution.
 
 ## Project Layout
 - cmd/api/ — application entry point
