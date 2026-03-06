@@ -8,11 +8,12 @@ import (
 )
 
 type CreateRequest struct {
-	Name           string `json:"name"            validate:"required,min=1,max=255"`
-	CronExpression string `json:"cron_expression" validate:"required"`
-	Prompt         string `json:"prompt"          validate:"required"`
-	Enabled        *bool  `json:"enabled"`
-	TimeoutSeconds *int32 `json:"timeout_seconds" validate:"omitempty,min=1,max=3600"`
+	Name           string  `json:"name"            validate:"required,min=1,max=255"`
+	CronExpression string  `json:"cron_expression" validate:"required"`
+	Prompt         string  `json:"prompt"          validate:"required"`
+	Enabled        *bool   `json:"enabled"`
+	TimeoutSeconds *int32  `json:"timeout_seconds" validate:"omitempty,min=1,max=3600"`
+	MCPConfig      *string `json:"mcp_config"`
 }
 
 type UpdateRequest struct {
@@ -21,6 +22,7 @@ type UpdateRequest struct {
 	Prompt         *string `json:"prompt"`
 	Enabled        *bool   `json:"enabled"`
 	TimeoutSeconds *int32  `json:"timeout_seconds" validate:"omitempty,min=1,max=3600"`
+	MCPConfig      *string `json:"mcp_config"`
 }
 
 type Response struct {
@@ -30,6 +32,7 @@ type Response struct {
 	CronExpression *string    `json:"cron_expression,omitempty"`
 	Prompt         string     `json:"prompt"`
 	RunAt          *time.Time `json:"run_at,omitempty"`
+	MCPConfig      *string    `json:"mcp_config,omitempty"`
 	Enabled        bool       `json:"enabled"`
 	TimeoutSeconds int32      `json:"timeout_seconds"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -44,6 +47,7 @@ func ToResponse(t *domain.AgentTask) Response {
 		CronExpression: t.CronExpression,
 		Prompt:         t.Prompt,
 		RunAt:          t.RunAt,
+		MCPConfig:      t.MCPConfig,
 		Enabled:        t.Enabled,
 		TimeoutSeconds: t.TimeoutSeconds,
 		CreatedAt:      t.CreatedAt,

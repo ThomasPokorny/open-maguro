@@ -11,11 +11,13 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-playground/validator/v10"
+	"github.com/joho/godotenv"
 
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/config"
 	"open-maguro/internal/database"
 	"open-maguro/internal/executor"
+	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/router"
 	"open-maguro/internal/scheduled_task"
 	"open-maguro/internal/scheduler"
@@ -23,6 +25,8 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load() // optional: loads .env if present
+
 	cfg, err := env.ParseAs[config.Config]()
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
@@ -46,7 +50,7 @@ func main() {
 	taskExecRepo := task_execution.NewPostgresRepository(pool)
 
 	// Wire up executor and scheduler
-	exec := executor.New(taskExecRepo)
+	exec := executor.New(taskExecRepo, cfg.MCPConfigPath)
 	sched := scheduler.New(agentTaskRepo, agentTaskRepo, exec)
 
 	// Wire up agent_task (with scheduler reload callback)
@@ -65,7 +69,11 @@ func main() {
 		scheduled_task.WithOnTaskChanged(sched.Reload),
 	)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler)
+	// Wire up mcp_config
+	mcpConfigService := mcp_config.NewService(cfg.MCPConfigPath)
+	mcpConfigHandler := mcp_config.NewHandler(mcpConfigService, validate)
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

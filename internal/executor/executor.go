@@ -21,11 +21,12 @@ type ExecutionRepository interface {
 }
 
 type Executor struct {
-	repo ExecutionRepository
+	repo            ExecutionRepository
+	globalMCPConfig string
 }
 
-func New(repo ExecutionRepository) *Executor {
-	return &Executor{repo: repo}
+func New(repo ExecutionRepository, globalMCPConfig string) *Executor {
+	return &Executor{repo: repo, globalMCPConfig: globalMCPConfig}
 }
 
 // Run executes a single agent task. Safe to call from a goroutine.
@@ -61,7 +62,13 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 	execCtx, execCancel := context.WithTimeout(ctx, timeout)
 	defer execCancel()
 
-	stdout, stderr, runErr := e.runClaude(execCtx, task.Prompt)
+	// Use task-level MCP config, fall back to global
+	mcpConfig := e.globalMCPConfig
+	if task.MCPConfig != nil {
+		mcpConfig = *task.MCPConfig
+	}
+
+	stdout, stderr, runErr := e.runClaude(execCtx, task.Prompt, mcpConfig)
 
 	// Record result (use parent ctx so DB write succeeds even after timeout)
 	finishedAt := pgtype.Timestamptz{Time: time.Now(), Valid: true}
@@ -110,8 +117,14 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 	}
 }
 
-func (e *Executor) runClaude(ctx context.Context, prompt string) (stdout, stderr string, err error) {
-	cmd := exec.CommandContext(ctx, "claude", "--print", "--output-format", "json", "-p", prompt)
+func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig string) (stdout, stderr string, err error) {
+	args := []string{"--print", "--output-format", "json"}
+	if mcpConfig != "" {
+		args = append(args, "--mcp-config", mcpConfig)
+	}
+	args = append(args, "-p", prompt)
+
+	cmd := exec.CommandContext(ctx, "claude", args...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

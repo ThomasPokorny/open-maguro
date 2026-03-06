@@ -13,9 +13,9 @@ import (
 )
 
 const createAgentTask = `-- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, timeout_seconds, task_type)
-VALUES ($1, $2, $3, $4, $5, 'cron')
-RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at
+INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, timeout_seconds, mcp_config, task_type)
+VALUES ($1, $2, $3, $4, $5, $6, 'cron')
+RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config
 `
 
 type CreateAgentTaskParams struct {
@@ -24,6 +24,7 @@ type CreateAgentTaskParams struct {
 	Prompt         string      `json:"prompt"`
 	Enabled        bool        `json:"enabled"`
 	TimeoutSeconds int32       `json:"timeout_seconds"`
+	McpConfig      pgtype.Text `json:"mcp_config"`
 }
 
 func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams) (AgentTask, error) {
@@ -33,6 +34,7 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		arg.Prompt,
 		arg.Enabled,
 		arg.TimeoutSeconds,
+		arg.McpConfig,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -46,14 +48,15 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		&i.UpdatedAt,
 		&i.TaskType,
 		&i.RunAt,
+		&i.McpConfig,
 	)
 	return i, err
 }
 
 const createScheduledTask = `-- name: CreateScheduledTask :one
-INSERT INTO agent_tasks (name, prompt, run_at, timeout_seconds, task_type)
-VALUES ($1, $2, $3, $4, 'one_time')
-RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at
+INSERT INTO agent_tasks (name, prompt, run_at, timeout_seconds, mcp_config, task_type)
+VALUES ($1, $2, $3, $4, $5, 'one_time')
+RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config
 `
 
 type CreateScheduledTaskParams struct {
@@ -61,6 +64,7 @@ type CreateScheduledTaskParams struct {
 	Prompt         string             `json:"prompt"`
 	RunAt          pgtype.Timestamptz `json:"run_at"`
 	TimeoutSeconds int32              `json:"timeout_seconds"`
+	McpConfig      pgtype.Text        `json:"mcp_config"`
 }
 
 func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTaskParams) (AgentTask, error) {
@@ -69,6 +73,7 @@ func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTa
 		arg.Prompt,
 		arg.RunAt,
 		arg.TimeoutSeconds,
+		arg.McpConfig,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -82,6 +87,7 @@ func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTa
 		&i.UpdatedAt,
 		&i.TaskType,
 		&i.RunAt,
+		&i.McpConfig,
 	)
 	return i, err
 }
@@ -96,7 +102,7 @@ func (q *Queries) DeleteAgentTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const getAgentTask = `-- name: GetAgentTask :one
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks WHERE id = $1
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks WHERE id = $1
 `
 
 func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, error) {
@@ -113,12 +119,13 @@ func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, er
 		&i.UpdatedAt,
 		&i.TaskType,
 		&i.RunAt,
+		&i.McpConfig,
 	)
 	return i, err
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks ORDER BY created_at DESC
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
@@ -141,6 +148,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 			&i.UpdatedAt,
 			&i.TaskType,
 			&i.RunAt,
+			&i.McpConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -153,7 +161,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 }
 
 const listEnabledCronTasks = `-- name: ListEnabledCronTasks :many
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks
 WHERE enabled = true AND task_type = 'cron'
 ORDER BY created_at DESC
 `
@@ -178,6 +186,7 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 			&i.UpdatedAt,
 			&i.TaskType,
 			&i.RunAt,
+			&i.McpConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +199,7 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 }
 
 const listPendingScheduledTasks = `-- name: ListPendingScheduledTasks :many
-SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks
 WHERE enabled = true AND task_type = 'one_time'
 ORDER BY run_at ASC
 `
@@ -215,6 +224,7 @@ func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, e
 			&i.UpdatedAt,
 			&i.TaskType,
 			&i.RunAt,
+			&i.McpConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -233,9 +243,10 @@ SET name = $2,
     prompt = $4,
     enabled = $5,
     timeout_seconds = $6,
+    mcp_config = $7,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at
+RETURNING id, name, cron_expression, prompt, enabled, timeout_seconds, created_at, updated_at, task_type, run_at, mcp_config
 `
 
 type UpdateAgentTaskParams struct {
@@ -245,6 +256,7 @@ type UpdateAgentTaskParams struct {
 	Prompt         string      `json:"prompt"`
 	Enabled        bool        `json:"enabled"`
 	TimeoutSeconds int32       `json:"timeout_seconds"`
+	McpConfig      pgtype.Text `json:"mcp_config"`
 }
 
 func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams) (AgentTask, error) {
@@ -255,6 +267,7 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		arg.Prompt,
 		arg.Enabled,
 		arg.TimeoutSeconds,
+		arg.McpConfig,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -268,6 +281,7 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		&i.UpdatedAt,
 		&i.TaskType,
 		&i.RunAt,
+		&i.McpConfig,
 	)
 	return i, err
 }

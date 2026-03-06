@@ -49,6 +49,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 		Prompt:         &existing.Prompt,
 		Enabled:        &existing.Enabled,
 		TimeoutSeconds: &existing.TimeoutSeconds,
+		MCPConfig:      existing.MCPConfig,
 	}
 	if req.Name != nil {
 		merged.Name = req.Name
@@ -64,6 +65,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	}
 	if req.TimeoutSeconds != nil {
 		merged.TimeoutSeconds = req.TimeoutSeconds
+	}
+	if req.MCPConfig != nil {
+		merged.MCPConfig = req.MCPConfig
 	}
 
 	return s.repo.Update(ctx, id, merged)

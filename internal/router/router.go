@@ -7,11 +7,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"open-maguro/internal/agent_task"
+	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/scheduled_task"
 	"open-maguro/internal/task_execution"
 )
 
-func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler) chi.Router {
+func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -27,6 +28,7 @@ func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.H
 		agentTaskHandler.RegisterRoutes(r)
 		taskExecHandler.RegisterRoutes(r)
 		scheduledTaskHandler.RegisterRoutes(r)
+		mcpConfigHandler.RegisterRoutes(r)
 	})
 
 	return r

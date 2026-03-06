@@ -128,6 +128,60 @@ Returns an array of executions, most recent first. Each execution has:
 curl http://localhost:8080/api/v1/executions/{id}
 ```
 
+## MCP Server Management
+
+MCP (Model Context Protocol) servers give agents access to external tools (Slack, Linear, GitHub, etc). The global MCP config is stored in `mcp.json` and applied to all task executions by default. Tasks can also specify their own `mcp_config` to override.
+
+### List MCP Servers
+
+```bash
+curl http://localhost:8080/api/v1/mcp-servers
+```
+
+### Add an MCP Server
+
+```bash
+curl -X POST http://localhost:8080/api/v1/mcp-servers \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "notion",
+    "command": "npx",
+    "args": ["-y", "notion-mcp-server"],
+    "env": {
+      "NOTION_API_KEY": "ntn_..."
+    }
+  }'
+```
+
+**Fields:**
+- `name` (required): Unique identifier for the server (e.g. "slack", "linear", "notion")
+- `command` (required): The command to run (usually "npx")
+- `args` (required): Command arguments (usually the npm package name)
+- `env` (optional): Environment variables (API keys, tokens)
+
+### Remove an MCP Server
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/mcp-servers/notion
+```
+
+Returns 204 on success.
+
+### Using MCP Config Per-Task
+
+Both cron and one-time tasks accept an optional `mcp_config` field — a path to an alternative MCP config file. If not set, the global config is used.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/agent-tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Linear sync",
+    "cron_expression": "0 9 * * 1-5",
+    "prompt": "Check Linear for any unassigned high-priority issues and post them to #team",
+    "mcp_config": "/path/to/custom-mcp.json"
+  }'
+```
+
 ## How to Handle User Requests
 
 **"Remind me to X at Y time"** → Create a one-time scheduled task. Convert the user's time to RFC 3339 format.
@@ -143,6 +197,12 @@ curl http://localhost:8080/api/v1/executions/{id}
 **"Resume/enable task X"** → PATCH the task with `{"enabled": true}`.
 
 **"Delete task X"** → DELETE the task. Confirm with the user first since cron task deletions cascade to execution history.
+
+**"Add the Notion MCP"** → POST to `/api/v1/mcp-servers` with the server name, npx command, and any required API keys. Ask the user for the API key if not provided.
+
+**"What MCP servers do I have?"** → GET `/api/v1/mcp-servers`. List them in a readable format.
+
+**"Remove the Slack MCP"** → DELETE `/api/v1/mcp-servers/slack`.
 
 **"Change the schedule of X"** → PATCH the task with the new `cron_expression`.
 

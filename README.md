@@ -25,6 +25,7 @@ go run cmd/api/main.go
 | `DATABASE_URL` | Yes | — | Postgres connection string |
 | `PORT` | No | `8080` | HTTP server port |
 | `LOG_LEVEL` | No | `info` | Logging level |
+| `MCP_CONFIG_PATH` | No | — | Path to global MCP config file (mcp.json) |
 
 ## API Endpoints
 
@@ -153,6 +154,70 @@ Request body:
 | `timeout_seconds` | int | No | `60` | Max execution time (1–3600) |
 
 Response `201`: Scheduled task object. The task auto-deletes after execution, but the execution log persists.
+
+---
+
+### MCP Servers
+
+Manage MCP (Model Context Protocol) servers that give agents access to external tools. The global config at `MCP_CONFIG_PATH` is used for all executions unless a task specifies its own `mcp_config`.
+
+#### List MCP Servers
+
+```
+GET /api/v1/mcp-servers
+```
+
+Response `200`:
+```json
+[
+  {
+    "name": "linear",
+    "command": "npx",
+    "args": ["-y", "linear-mcp-server"],
+    "env": {
+      "LINEAR_API_KEY": "lin_api_..."
+    }
+  }
+]
+```
+
+#### Add MCP Server
+
+```
+POST /api/v1/mcp-servers
+```
+
+Request body:
+```json
+{
+  "name": "notion",
+  "command": "npx",
+  "args": ["-y", "notion-mcp-server"],
+  "env": {
+    "NOTION_API_KEY": "ntn_..."
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Unique server identifier |
+| `command` | string | Yes | Command to run |
+| `args` | string[] | Yes | Command arguments |
+| `env` | object | No | Environment variables (API keys, etc) |
+
+Response `201`:
+```json
+{"status": "ok", "name": "notion"}
+```
+
+#### Remove MCP Server
+
+```
+DELETE /api/v1/mcp-servers/{name}
+```
+
+Response `204`: No content.
 
 ---
 

@@ -18,6 +18,7 @@ type AgentTask struct {
 	CronExpression *string
 	Prompt         string
 	RunAt          *time.Time
+	MCPConfig      *string
 	Enabled        bool
 	TimeoutSeconds int32
 	CreatedAt      time.Time

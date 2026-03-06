@@ -17,6 +17,7 @@ coverage.html
 
 # Environment
 .env
+mcp.json
 
 # IDE
 .idea/

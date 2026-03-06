@@ -12,6 +12,7 @@ type CreateRequest struct {
 	Prompt         string    `json:"prompt"          validate:"required"`
 	RunAt          time.Time `json:"run_at"          validate:"required"`
 	TimeoutSeconds *int32    `json:"timeout_seconds" validate:"omitempty,min=1,max=3600"`
+	MCPConfig      *string   `json:"mcp_config"`
 }
 
 type Response struct {
@@ -20,6 +21,7 @@ type Response struct {
 	TaskType       string     `json:"task_type"`
 	Prompt         string     `json:"prompt"`
 	RunAt          *time.Time `json:"run_at"`
+	MCPConfig      *string    `json:"mcp_config,omitempty"`
 	Enabled        bool       `json:"enabled"`
 	TimeoutSeconds int32      `json:"timeout_seconds"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -32,6 +34,7 @@ func ToResponse(t *domain.AgentTask) Response {
 		TaskType:       t.TaskType,
 		Prompt:         t.Prompt,
 		RunAt:          t.RunAt,
+		MCPConfig:      t.MCPConfig,
 		Enabled:        t.Enabled,
 		TimeoutSeconds: t.TimeoutSeconds,
 		CreatedAt:      t.CreatedAt,

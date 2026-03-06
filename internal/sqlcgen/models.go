@@ -68,6 +68,7 @@ type AgentTask struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	TaskType       string             `json:"task_type"`
 	RunAt          pgtype.Timestamptz `json:"run_at"`
+	McpConfig      pgtype.Text        `json:"mcp_config"`
 }
 
 type TaskExecution struct {
