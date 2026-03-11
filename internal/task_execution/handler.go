@@ -19,6 +19,7 @@ func NewHandler(service *Service) *Handler {
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/agent-tasks/{taskId}/executions", h.ListByAgentTask)
+	r.Get("/executions", h.List)
 	r.Get("/executions/{id}", h.Get)
 }
 
@@ -36,6 +37,16 @@ func (h *Handler) ListByAgentTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeJSON(w, http.StatusOK, ToResponseList(executions))
+}
+
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	executions, err := h.service.List(r.Context())
+	if err != nil {
+		slog.Error("failed to list executions", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list executions")
+		return
+	}
 	writeJSON(w, http.StatusOK, ToResponseList(executions))
 }
 

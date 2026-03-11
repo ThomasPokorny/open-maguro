@@ -19,6 +19,16 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - `go run cmd/api/main.go` — start the API server
 - `goose -dir db/migrations postgres "$DATABASE_URL" up` — run migrations
 - `sqlc generate` — regenerate database code from queries
+- `go test ./internal/tests/... -v` — run e2e API tests (requires Podman/Docker running)
+
+## Testing
+- E2e tests live in `internal/tests/` using testcontainers-go (spins up a real Postgres per test)
+- Auto-detects Podman on macOS; also works with Docker
+- `go test ./internal/tests/... -v -count=1` — run without cache
+- **IMPORTANT**: After any significant change (new endpoints, schema changes, migrations, business logic, DTO changes), you MUST:
+  1. Update or add tests in `internal/tests/api_test.go` to cover the change
+  2. Run `go test ./internal/tests/... -v -count=1` to verify all tests pass
+  3. Fix any failures before considering the change complete
 
 ## Environment Variables
 - DATABASE_URL (required): Postgres connection string
@@ -33,6 +43,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - internal/agent_task/ — AgentTask feature (handler, service, repo, DTOs)
 - internal/task_execution/ — TaskExecution feature
 - internal/scheduled_task/ — One-time scheduled task endpoint
+- internal/skill/ — Skills feature (CRUD + agent-skill associations)
 - internal/mcp_config/ — MCP server config management (read/write mcp.json)
 - internal/config/ — configuration loading
 - internal/database/ — database connection pool
@@ -50,11 +61,21 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - GET /api/v1/agent-tasks/{id} — get agent task
 - PATCH /api/v1/agent-tasks/{id} — partial update agent task
 - DELETE /api/v1/agent-tasks/{id} — delete agent task
+- POST /api/v1/agent-tasks/{id}/run — trigger immediate execution of agent task
 - POST /api/v1/scheduled-tasks — create one-time scheduled task (auto-deletes after execution)
 - GET /api/v1/mcp-servers — list configured MCP servers
 - POST /api/v1/mcp-servers — add an MCP server to global config
 - DELETE /api/v1/mcp-servers/{name} — remove an MCP server from global config
+- POST /api/v1/skills — create skill
+- GET /api/v1/skills — list skills
+- GET /api/v1/skills/{id} — get skill
+- PATCH /api/v1/skills/{id} — partial update skill
+- DELETE /api/v1/skills/{id} — delete skill
+- GET /api/v1/agent-tasks/{id}/skills — list skills for agent
+- POST /api/v1/agent-tasks/{id}/skills/{skillId} — attach skill to agent
+- DELETE /api/v1/agent-tasks/{id}/skills/{skillId} — detach skill from agent
 - GET /api/v1/agent-tasks/{taskId}/executions — list executions for a task
+- GET /api/v1/executions — list all executions (includes orphaned one-shot task logs)
 - GET /api/v1/executions/{id} — get execution by id
 
 ## Conventions

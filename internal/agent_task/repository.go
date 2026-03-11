@@ -36,12 +36,30 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		mcpConfig = pgtype.Text{String: *params.MCPConfig, Valid: true}
 	}
 
+	allowedTools := pgtype.Text{}
+	if params.AllowedTools != nil {
+		allowedTools = pgtype.Text{String: *params.AllowedTools, Valid: true}
+	}
+
+	systemAgent := false
+	if params.SystemAgent != nil {
+		systemAgent = *params.SystemAgent
+	}
+
+	globalSkillAccess := false
+	if params.GlobalSkillAccess != nil {
+		globalSkillAccess = *params.GlobalSkillAccess
+	}
+
 	row, err := r.queries.CreateAgentTask(ctx, sqlcgen.CreateAgentTaskParams{
-		Name:           params.Name,
-		CronExpression: pgtype.Text{String: params.CronExpression, Valid: true},
-		Prompt:         params.Prompt,
-		Enabled:        enabled,
-		McpConfig:      mcpConfig,
+		Name:              params.Name,
+		CronExpression:    pgtype.Text{String: params.CronExpression, Valid: true},
+		Prompt:            params.Prompt,
+		Enabled:           enabled,
+		McpConfig:         mcpConfig,
+		AllowedTools:      allowedTools,
+		SystemAgent:       systemAgent,
+		GlobalSkillAccess: globalSkillAccess,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent task: %w", err)
@@ -84,13 +102,31 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		mcpConfig = pgtype.Text{String: *params.MCPConfig, Valid: true}
 	}
 
+	allowedTools := pgtype.Text{}
+	if params.AllowedTools != nil {
+		allowedTools = pgtype.Text{String: *params.AllowedTools, Valid: true}
+	}
+
+	systemAgent := false
+	if params.SystemAgent != nil {
+		systemAgent = *params.SystemAgent
+	}
+
+	globalSkillAccess := false
+	if params.GlobalSkillAccess != nil {
+		globalSkillAccess = *params.GlobalSkillAccess
+	}
+
 	row, err := r.queries.UpdateAgentTask(ctx, sqlcgen.UpdateAgentTaskParams{
-		ID:             id,
-		Name:           *params.Name,
-		CronExpression: cronExpr,
-		Prompt:         *params.Prompt,
-		Enabled:        *params.Enabled,
-		McpConfig:      mcpConfig,
+		ID:                id,
+		Name:              *params.Name,
+		CronExpression:    cronExpr,
+		Prompt:            *params.Prompt,
+		Enabled:           *params.Enabled,
+		McpConfig:         mcpConfig,
+		AllowedTools:      allowedTools,
+		SystemAgent:       systemAgent,
+		GlobalSkillAccess: globalSkillAccess,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -135,17 +171,24 @@ func (r *PostgresRepository) ListPendingScheduled(ctx context.Context) ([]domain
 	return tasks, nil
 }
 
-func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfigVal *string) (*domain.AgentTask, error) {
+func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfigVal *string, allowedToolsVal *string) (*domain.AgentTask, error) {
 	mcpConfig := pgtype.Text{}
 	if mcpConfigVal != nil {
 		mcpConfig = pgtype.Text{String: *mcpConfigVal, Valid: true}
 	}
+	allowedTools := pgtype.Text{}
+	if allowedToolsVal != nil {
+		allowedTools = pgtype.Text{String: *allowedToolsVal, Valid: true}
+	}
 
 	row, err := r.queries.CreateScheduledTask(ctx, sqlcgen.CreateScheduledTaskParams{
-		Name:      name,
-		Prompt:    prompt,
-		RunAt:     pgtype.Timestamptz{Time: runAt, Valid: true},
-		McpConfig: mcpConfig,
+		Name:              name,
+		Prompt:            prompt,
+		RunAt:             pgtype.Timestamptz{Time: runAt, Valid: true},
+		McpConfig:         mcpConfig,
+		AllowedTools:      allowedTools,
+		SystemAgent:       false,
+		GlobalSkillAccess: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create scheduled task: %w", err)
@@ -155,13 +198,15 @@ func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt s
 
 func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	task := &domain.AgentTask{
-		ID:        row.ID,
-		Name:      row.Name,
-		TaskType:  row.TaskType,
-		Prompt:    row.Prompt,
-		Enabled:   row.Enabled,
-		CreatedAt: row.CreatedAt.Time,
-		UpdatedAt: row.UpdatedAt.Time,
+		ID:                row.ID,
+		Name:              row.Name,
+		TaskType:          row.TaskType,
+		Prompt:            row.Prompt,
+		Enabled:           row.Enabled,
+		SystemAgent:       row.SystemAgent,
+		GlobalSkillAccess: row.GlobalSkillAccess,
+		CreatedAt:         row.CreatedAt.Time,
+		UpdatedAt:         row.UpdatedAt.Time,
 	}
 	if row.CronExpression.Valid {
 		s := row.CronExpression.String
@@ -174,6 +219,10 @@ func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	if row.McpConfig.Valid {
 		s := row.McpConfig.String
 		task.MCPConfig = &s
+	}
+	if row.AllowedTools.Valid {
+		s := row.AllowedTools.String
+		task.AllowedTools = &s
 	}
 	return task
 }

@@ -57,17 +57,33 @@ func (ns NullExecutionStatus) Value() (driver.Value, error) {
 	return string(ns.ExecutionStatus), nil
 }
 
+type AgentSkill struct {
+	AgentTaskID uuid.UUID `json:"agent_task_id"`
+	SkillID     uuid.UUID `json:"skill_id"`
+}
+
 type AgentTask struct {
-	ID             uuid.UUID          `json:"id"`
-	Name           string             `json:"name"`
-	CronExpression pgtype.Text        `json:"cron_expression"`
-	Prompt         string             `json:"prompt"`
-	Enabled        bool               `json:"enabled"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	TaskType       string             `json:"task_type"`
-	RunAt          pgtype.Timestamptz `json:"run_at"`
-	McpConfig      pgtype.Text        `json:"mcp_config"`
+	ID                uuid.UUID          `json:"id"`
+	Name              string             `json:"name"`
+	CronExpression    pgtype.Text        `json:"cron_expression"`
+	Prompt            string             `json:"prompt"`
+	Enabled           bool               `json:"enabled"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	TaskType          string             `json:"task_type"`
+	RunAt             pgtype.Timestamptz `json:"run_at"`
+	McpConfig         pgtype.Text        `json:"mcp_config"`
+	AllowedTools      pgtype.Text        `json:"allowed_tools"`
+	SystemAgent       bool               `json:"system_agent"`
+	GlobalSkillAccess bool               `json:"global_skill_access"`
+}
+
+type Skill struct {
+	ID        uuid.UUID          `json:"id"`
+	Title     string             `json:"title"`
+	Content   string             `json:"content"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type TaskExecution struct {

@@ -8,7 +8,7 @@ import (
 )
 
 type Repository interface {
-	CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfig *string) (*domain.AgentTask, error)
+	CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfig *string, allowedTools *string) (*domain.AgentTask, error)
 }
 
 type Service struct {
@@ -20,5 +20,5 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*domain.AgentTask, error) {
-	return s.repo.CreateScheduled(ctx, req.Name, req.Prompt, req.RunAt, req.MCPConfig)
+	return s.repo.CreateScheduled(ctx, req.Name, req.Prompt, req.RunAt, req.MCPConfig, req.AllowedTools)
 }

@@ -9,6 +9,7 @@ import (
 
 type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.TaskExecution, error)
+	List(ctx context.Context) ([]domain.TaskExecution, error)
 	ListByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) ([]domain.TaskExecution, error)
 }
 
@@ -22,6 +23,10 @@ func NewService(repo Repository) *Service {
 
 func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*domain.TaskExecution, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+func (s *Service) List(ctx context.Context) ([]domain.TaskExecution, error) {
+	return s.repo.List(ctx)
 }
 
 func (s *Service) ListByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) ([]domain.TaskExecution, error) {

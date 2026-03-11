@@ -59,8 +59,7 @@ Request body:
   "name": "Daily report",
   "cron_expression": "0 6 * * *",
   "prompt": "Generate the daily sales report and email it to the team",
-  "enabled": true,
-  "timeout_seconds": 120
+  "enabled": true
 }
 ```
 
@@ -70,7 +69,10 @@ Request body:
 | `cron_expression` | string | Yes | — | Cron schedule expression |
 | `prompt` | string | Yes | — | Instruction for the Claude Code SDK agent |
 | `enabled` | bool | No | `true` | Whether the task is active |
-| `timeout_seconds` | int | No | `60` | Max execution time (1–3600) |
+| `mcp_config` | string | No | — | Path to custom MCP config file (overrides global) |
+| `allowed_tools` | string | No | — | Comma-separated extra tool patterns (additive to global) |
+| `system_agent` | bool | No | `false` | Mark as internal system agent |
+| `global_skill_access` | bool | No | `false` | Grant access to all skills (instead of only assigned ones) |
 
 Response `201`:
 ```json
@@ -80,7 +82,7 @@ Response `201`:
   "cron_expression": "0 6 * * *",
   "prompt": "Generate the daily sales report and email it to the team",
   "enabled": true,
-  "timeout_seconds": 120,
+  "system_agent": false,
   "created_at": "2026-03-05T10:00:00Z",
   "updated_at": "2026-03-05T10:00:00Z"
 }
@@ -127,6 +129,23 @@ DELETE /api/v1/agent-tasks/{id}
 
 Response `204`: No content.
 
+#### Run Agent Task Immediately
+
+```
+POST /api/v1/agent-tasks/{id}/run
+```
+
+Triggers immediate execution of the agent task in the background. No request body required.
+
+Response `202`:
+```json
+{"status": "accepted"}
+```
+
+Response `404`: `{"error": "agent task not found"}`
+
+Check execution results via `GET /api/v1/agent-tasks/{id}/executions`.
+
 ---
 
 ### Scheduled Tasks (One-Time)
@@ -142,8 +161,7 @@ Request body:
 {
   "name": "Send Slack reminder",
   "prompt": "Send a message to #general on Slack saying 'Team standup in 5 minutes'",
-  "run_at": "2026-03-05T13:00:00Z",
-  "timeout_seconds": 60
+  "run_at": "2026-03-05T13:00:00Z"
 }
 ```
 
@@ -152,7 +170,8 @@ Request body:
 | `name` | string | Yes | — | Human-readable task name |
 | `prompt` | string | Yes | — | Instruction for the Claude Code SDK agent |
 | `run_at` | string (RFC3339) | Yes | — | When to execute the task |
-| `timeout_seconds` | int | No | `60` | Max execution time (1–3600) |
+| `mcp_config` | string | No | — | Path to custom MCP config file |
+| `allowed_tools` | string | No | — | Comma-separated extra tool patterns |
 
 Response `201`: Scheduled task object. The task auto-deletes after execution, but the execution log persists.
 
@@ -222,7 +241,82 @@ Response `204`: No content.
 
 ---
 
+### Skills
+
+Skills are reusable markdown documents (instructions, API references, credentials) that get injected into agent execution prompts. Attach skills to specific agents, or set `global_skill_access: true` on an agent to give it all skills.
+
+#### Create Skill
+
+```
+POST /api/v1/skills
+```
+
+Request body:
+```json
+{
+  "title": "Slack API",
+  "content": "Use the Slack Bot Token xoxb-**** to send messages via the Slack API..."
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | Yes | Skill name (max 255 chars) |
+| `content` | string | Yes | Skill content (markdown, instructions, API keys) |
+
+Response `201`: Skill object.
+
+#### List Skills
+
+```
+GET /api/v1/skills
+```
+
+Response `200`: Array of skill objects (ordered by created_at DESC).
+
+#### Get / Update / Delete Skill
+
+```
+GET /api/v1/skills/{id}
+PATCH /api/v1/skills/{id}
+DELETE /api/v1/skills/{id}
+```
+
+#### Attach Skill to Agent
+
+```
+POST /api/v1/agent-tasks/{id}/skills/{skillId}
+```
+
+Response `204`: No content. Idempotent — attaching twice is a no-op.
+
+#### Detach Skill from Agent
+
+```
+DELETE /api/v1/agent-tasks/{id}/skills/{skillId}
+```
+
+Response `204`: No content.
+
+#### List Skills for Agent
+
+```
+GET /api/v1/agent-tasks/{id}/skills
+```
+
+Response `200`: Array of skill objects attached to this agent.
+
+---
+
 ### Task Executions
+
+#### List All Executions
+
+```
+GET /api/v1/executions
+```
+
+Response `200`: Array of all execution objects (ordered by created_at DESC). Includes executions from deleted one-shot tasks (with `agent_task_id: null` and `task_name` preserved).
 
 #### List Executions for an Agent Task
 
@@ -279,14 +373,18 @@ sqlc generate
 go build ./...
 ```
 
-To test it end-to-end:
-docker compose up -d
-goose -dir db/migrations postgres "$DATABASE_URL" up
-go run cmd/api/main.go
+Migrations run automatically on server startup (embedded via `go:embed` + goose).
 
-# Create a task that fires every minute
-curl -X POST localhost:8080/api/v1/agent-tasks \
--H 'Content-Type: application/json' \
--d '{"name":"test","cron_expression":"*/1 * * * *","prompt":"Say hello"}'
+## Testing
 
-execute migration: source .env && goose -dir db/migrations postgres "$DATABASE_URL" up 2>&1
+E2e API tests use [testcontainers-go](https://golang.testcontainers.org/) to spin up a real Postgres instance per test. Works with both Podman and Docker.
+
+```bash
+# Run all tests
+go test ./internal/tests/... -v
+
+# Run without cache
+go test ./internal/tests/... -v -count=1
+```
+
+Requires Podman or Docker to be running. On macOS with Podman, the socket is auto-detected.

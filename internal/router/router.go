@@ -6,15 +6,24 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/scheduled_task"
+	"open-maguro/internal/skill"
 	"open-maguro/internal/task_execution"
 )
 
-func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler) chi.Router {
+func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler) chi.Router {
 	r := chi.NewRouter()
 
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
@@ -29,6 +38,7 @@ func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.H
 		taskExecHandler.RegisterRoutes(r)
 		scheduledTaskHandler.RegisterRoutes(r)
 		mcpConfigHandler.RegisterRoutes(r)
+		skillHandler.RegisterRoutes(r)
 	})
 
 	return r

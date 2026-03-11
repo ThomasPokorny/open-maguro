@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,8 +12,11 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-playground/validator/v10"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
+	"github.com/pressly/goose/v3"
 
+	dbpkg "open-maguro/db"
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/config"
 	"open-maguro/internal/database"
@@ -21,6 +25,7 @@ import (
 	"open-maguro/internal/router"
 	"open-maguro/internal/scheduled_task"
 	"open-maguro/internal/scheduler"
+	"open-maguro/internal/skill"
 	"open-maguro/internal/task_execution"
 )
 
@@ -36,6 +41,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Run migrations
+	if err := runMigrations(cfg.DatabaseURL); err != nil {
+		slog.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+
 	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
@@ -48,15 +59,17 @@ func main() {
 	// Wire up repositories
 	agentTaskRepo := agent_task.NewPostgresRepository(pool)
 	taskExecRepo := task_execution.NewPostgresRepository(pool)
+	skillRepo := skill.NewPostgresRepository(pool)
 
 	// Wire up executor and scheduler
-	exec := executor.New(taskExecRepo, cfg.MCPConfigPath, cfg.AllowedTools)
+	exec := executor.New(taskExecRepo, skillRepo, cfg.MCPConfigPath, cfg.AllowedTools)
 	sched := scheduler.New(agentTaskRepo, agentTaskRepo, exec)
 
 	// Wire up agent_task (with scheduler reload callback)
 	agentTaskService := agent_task.NewService(agentTaskRepo)
 	agentTaskHandler := agent_task.NewHandler(agentTaskService, validate,
 		agent_task.WithOnTaskChanged(sched.Reload),
+		agent_task.WithRunner(exec),
 	)
 
 	// Wire up task_execution
@@ -73,7 +86,11 @@ func main() {
 	mcpConfigService := mcp_config.NewService(cfg.MCPConfigPath)
 	mcpConfigHandler := mcp_config.NewHandler(mcpConfigService, validate)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler)
+	// Wire up skill
+	skillService := skill.NewService(skillRepo)
+	skillHandler := skill.NewHandler(skillService, validate)
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -105,4 +122,20 @@ func main() {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func runMigrations(databaseURL string) error {
+	goose.SetBaseFS(dbpkg.Migrations)
+
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+
+	return goose.Up(db, "migrations")
 }

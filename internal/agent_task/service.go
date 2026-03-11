@@ -44,11 +44,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 
 	// Apply partial updates
 	merged := UpdateRequest{
-		Name:           &existing.Name,
-		CronExpression: existing.CronExpression,
-		Prompt:         &existing.Prompt,
-		Enabled:        &existing.Enabled,
-		MCPConfig:      existing.MCPConfig,
+		Name:              &existing.Name,
+		CronExpression:    existing.CronExpression,
+		Prompt:            &existing.Prompt,
+		Enabled:           &existing.Enabled,
+		MCPConfig:         existing.MCPConfig,
+		AllowedTools:      existing.AllowedTools,
+		SystemAgent:       &existing.SystemAgent,
+		GlobalSkillAccess: &existing.GlobalSkillAccess,
 	}
 	if req.Name != nil {
 		merged.Name = req.Name
@@ -64,6 +67,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	}
 	if req.MCPConfig != nil {
 		merged.MCPConfig = req.MCPConfig
+	}
+	if req.AllowedTools != nil {
+		merged.AllowedTools = req.AllowedTools
+	}
+	if req.SystemAgent != nil {
+		merged.SystemAgent = req.SystemAgent
+	}
+	if req.GlobalSkillAccess != nil {
+		merged.GlobalSkillAccess = req.GlobalSkillAccess
 	}
 
 	return s.repo.Update(ctx, id, merged)

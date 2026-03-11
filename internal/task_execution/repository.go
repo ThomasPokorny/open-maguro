@@ -45,6 +45,19 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return toDomain(row), nil
 }
 
+func (r *PostgresRepository) List(ctx context.Context) ([]domain.TaskExecution, error) {
+	rows, err := r.queries.ListTaskExecutions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list task executions: %w", err)
+	}
+
+	executions := make([]domain.TaskExecution, len(rows))
+	for i, row := range rows {
+		executions[i] = *toDomain(row)
+	}
+	return executions, nil
+}
+
 func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) ([]domain.TaskExecution, error) {
 	rows, err := r.queries.ListTaskExecutionsByAgentTaskID(ctx, pgtype.UUID{Bytes: agentTaskID, Valid: true})
 	if err != nil {

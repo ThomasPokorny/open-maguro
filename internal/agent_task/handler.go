@@ -1,6 +1,7 @@
 package agent_task
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -8,12 +9,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"open-maguro/internal/domain"
 )
+
+// AgentRunner can execute an agent task.
+type AgentRunner interface {
+	Run(ctx context.Context, task domain.AgentTask, onComplete func())
+}
 
 type Handler struct {
 	service       *Service
 	validate      *validator.Validate
 	onTaskChanged func()
+	runner        AgentRunner
 }
 
 type HandlerOption func(*Handler)
@@ -21,6 +29,12 @@ type HandlerOption func(*Handler)
 func WithOnTaskChanged(fn func()) HandlerOption {
 	return func(h *Handler) {
 		h.onTaskChanged = fn
+	}
+}
+
+func WithRunner(runner AgentRunner) HandlerOption {
+	return func(h *Handler) {
+		h.runner = runner
 	}
 }
 
@@ -45,6 +59,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 		r.Get("/{id}", h.Get)
 		r.Patch("/{id}", h.Update)
 		r.Delete("/{id}", h.Delete)
+		r.Post("/{id}/run", h.Run)
 	})
 }
 
@@ -124,6 +139,30 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, ToResponse(task))
 	h.notifyTaskChanged()
+}
+
+func (h *Handler) Run(w http.ResponseWriter, r *http.Request) {
+	if h.runner == nil {
+		writeError(w, http.StatusInternalServerError, "agent runner not configured")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	task, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "agent task not found")
+		return
+	}
+
+	go h.runner.Run(context.Background(), *task, nil)
+
+	slog.Info("agent task run triggered", "task_id", task.ID, "task_name", task.Name)
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {

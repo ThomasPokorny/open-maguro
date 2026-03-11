@@ -1,6 +1,10 @@
 -- name: GetTaskExecution :one
 SELECT * FROM task_executions WHERE id = $1;
 
+-- name: ListTaskExecutions :many
+SELECT * FROM task_executions
+ORDER BY created_at DESC;
+
 -- name: ListTaskExecutionsByAgentTaskID :many
 SELECT * FROM task_executions
 WHERE agent_task_id = $1

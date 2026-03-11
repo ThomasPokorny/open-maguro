@@ -13,17 +13,20 @@ import (
 )
 
 const createAgentTask = `-- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, task_type)
-VALUES ($1, $2, $3, $4, $5, 'cron')
-RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config
+INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'cron')
+RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access
 `
 
 type CreateAgentTaskParams struct {
-	Name           string      `json:"name"`
-	CronExpression pgtype.Text `json:"cron_expression"`
-	Prompt         string      `json:"prompt"`
-	Enabled        bool        `json:"enabled"`
-	McpConfig      pgtype.Text `json:"mcp_config"`
+	Name              string      `json:"name"`
+	CronExpression    pgtype.Text `json:"cron_expression"`
+	Prompt            string      `json:"prompt"`
+	Enabled           bool        `json:"enabled"`
+	McpConfig         pgtype.Text `json:"mcp_config"`
+	AllowedTools      pgtype.Text `json:"allowed_tools"`
+	SystemAgent       bool        `json:"system_agent"`
+	GlobalSkillAccess bool        `json:"global_skill_access"`
 }
 
 func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams) (AgentTask, error) {
@@ -33,6 +36,9 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		arg.Prompt,
 		arg.Enabled,
 		arg.McpConfig,
+		arg.AllowedTools,
+		arg.SystemAgent,
+		arg.GlobalSkillAccess,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -46,21 +52,27 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		&i.TaskType,
 		&i.RunAt,
 		&i.McpConfig,
+		&i.AllowedTools,
+		&i.SystemAgent,
+		&i.GlobalSkillAccess,
 	)
 	return i, err
 }
 
 const createScheduledTask = `-- name: CreateScheduledTask :one
-INSERT INTO agent_tasks (name, prompt, run_at, mcp_config, task_type)
-VALUES ($1, $2, $3, $4, 'one_time')
-RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config
+INSERT INTO agent_tasks (name, prompt, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'one_time')
+RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access
 `
 
 type CreateScheduledTaskParams struct {
-	Name      string             `json:"name"`
-	Prompt    string             `json:"prompt"`
-	RunAt     pgtype.Timestamptz `json:"run_at"`
-	McpConfig pgtype.Text        `json:"mcp_config"`
+	Name              string             `json:"name"`
+	Prompt            string             `json:"prompt"`
+	RunAt             pgtype.Timestamptz `json:"run_at"`
+	McpConfig         pgtype.Text        `json:"mcp_config"`
+	AllowedTools      pgtype.Text        `json:"allowed_tools"`
+	SystemAgent       bool               `json:"system_agent"`
+	GlobalSkillAccess bool               `json:"global_skill_access"`
 }
 
 func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTaskParams) (AgentTask, error) {
@@ -69,6 +81,9 @@ func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTa
 		arg.Prompt,
 		arg.RunAt,
 		arg.McpConfig,
+		arg.AllowedTools,
+		arg.SystemAgent,
+		arg.GlobalSkillAccess,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -82,6 +97,9 @@ func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTa
 		&i.TaskType,
 		&i.RunAt,
 		&i.McpConfig,
+		&i.AllowedTools,
+		&i.SystemAgent,
+		&i.GlobalSkillAccess,
 	)
 	return i, err
 }
@@ -96,7 +114,7 @@ func (q *Queries) DeleteAgentTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const getAgentTask = `-- name: GetAgentTask :one
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks WHERE id = $1
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks WHERE id = $1
 `
 
 func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, error) {
@@ -113,12 +131,15 @@ func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, er
 		&i.TaskType,
 		&i.RunAt,
 		&i.McpConfig,
+		&i.AllowedTools,
+		&i.SystemAgent,
+		&i.GlobalSkillAccess,
 	)
 	return i, err
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks ORDER BY created_at DESC
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
@@ -141,6 +162,9 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 			&i.TaskType,
 			&i.RunAt,
 			&i.McpConfig,
+			&i.AllowedTools,
+			&i.SystemAgent,
+			&i.GlobalSkillAccess,
 		); err != nil {
 			return nil, err
 		}
@@ -153,7 +177,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 }
 
 const listEnabledCronTasks = `-- name: ListEnabledCronTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
 WHERE enabled = true AND task_type = 'cron'
 ORDER BY created_at DESC
 `
@@ -178,6 +202,9 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 			&i.TaskType,
 			&i.RunAt,
 			&i.McpConfig,
+			&i.AllowedTools,
+			&i.SystemAgent,
+			&i.GlobalSkillAccess,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +217,7 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 }
 
 const listPendingScheduledTasks = `-- name: ListPendingScheduledTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
 WHERE enabled = true AND task_type = 'one_time'
 ORDER BY run_at ASC
 `
@@ -215,6 +242,89 @@ func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, e
 			&i.TaskType,
 			&i.RunAt,
 			&i.McpConfig,
+			&i.AllowedTools,
+			&i.SystemAgent,
+			&i.GlobalSkillAccess,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSystemAgentTasks = `-- name: ListSystemAgentTasks :many
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
+WHERE system_agent = true
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListSystemAgentTasks(ctx context.Context) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listSystemAgentTasks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentTask{}
+	for rows.Next() {
+		var i AgentTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CronExpression,
+			&i.Prompt,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TaskType,
+			&i.RunAt,
+			&i.McpConfig,
+			&i.AllowedTools,
+			&i.SystemAgent,
+			&i.GlobalSkillAccess,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserAgentTasks = `-- name: ListUserAgentTasks :many
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
+WHERE system_agent = false
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListUserAgentTasks(ctx context.Context) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listUserAgentTasks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentTask{}
+	for rows.Next() {
+		var i AgentTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CronExpression,
+			&i.Prompt,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TaskType,
+			&i.RunAt,
+			&i.McpConfig,
+			&i.AllowedTools,
+			&i.SystemAgent,
+			&i.GlobalSkillAccess,
 		); err != nil {
 			return nil, err
 		}
@@ -233,18 +343,24 @@ SET name = $2,
     prompt = $4,
     enabled = $5,
     mcp_config = $6,
+    allowed_tools = $7,
+    system_agent = $8,
+    global_skill_access = $9,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config
+RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access
 `
 
 type UpdateAgentTaskParams struct {
-	ID             uuid.UUID   `json:"id"`
-	Name           string      `json:"name"`
-	CronExpression pgtype.Text `json:"cron_expression"`
-	Prompt         string      `json:"prompt"`
-	Enabled        bool        `json:"enabled"`
-	McpConfig      pgtype.Text `json:"mcp_config"`
+	ID                uuid.UUID   `json:"id"`
+	Name              string      `json:"name"`
+	CronExpression    pgtype.Text `json:"cron_expression"`
+	Prompt            string      `json:"prompt"`
+	Enabled           bool        `json:"enabled"`
+	McpConfig         pgtype.Text `json:"mcp_config"`
+	AllowedTools      pgtype.Text `json:"allowed_tools"`
+	SystemAgent       bool        `json:"system_agent"`
+	GlobalSkillAccess bool        `json:"global_skill_access"`
 }
 
 func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams) (AgentTask, error) {
@@ -255,6 +371,9 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		arg.Prompt,
 		arg.Enabled,
 		arg.McpConfig,
+		arg.AllowedTools,
+		arg.SystemAgent,
+		arg.GlobalSkillAccess,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -268,6 +387,9 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		&i.TaskType,
 		&i.RunAt,
 		&i.McpConfig,
+		&i.AllowedTools,
+		&i.SystemAgent,
+		&i.GlobalSkillAccess,
 	)
 	return i, err
 }
