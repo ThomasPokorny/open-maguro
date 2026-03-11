@@ -8,25 +8,29 @@ import (
 )
 
 type CreateRequest struct {
-	Name              string  `json:"name"            validate:"required,min=1,max=255"`
-	CronExpression    string  `json:"cron_expression" validate:"required"`
-	Prompt            string  `json:"prompt"          validate:"required"`
-	Enabled           *bool   `json:"enabled"`
-	MCPConfig         *string `json:"mcp_config"`
-	AllowedTools      *string `json:"allowed_tools"`
-	SystemAgent       *bool   `json:"system_agent"`
-	GlobalSkillAccess *bool   `json:"global_skill_access"`
+	Name              string     `json:"name"            validate:"required,min=1,max=255"`
+	CronExpression    string     `json:"cron_expression" validate:"required"`
+	Prompt            string     `json:"prompt"          validate:"required"`
+	Enabled           *bool      `json:"enabled"`
+	MCPConfig         *string    `json:"mcp_config"`
+	AllowedTools      *string    `json:"allowed_tools"`
+	SystemAgent       *bool      `json:"system_agent"`
+	GlobalSkillAccess *bool      `json:"global_skill_access"`
+	OnSuccessTaskID   *uuid.UUID `json:"on_success_task_id"`
+	OnFailureTaskID   *uuid.UUID `json:"on_failure_task_id"`
 }
 
 type UpdateRequest struct {
-	Name              *string `json:"name"            validate:"omitempty,min=1,max=255"`
-	CronExpression    *string `json:"cron_expression"`
-	Prompt            *string `json:"prompt"`
-	Enabled           *bool   `json:"enabled"`
-	MCPConfig         *string `json:"mcp_config"`
-	AllowedTools      *string `json:"allowed_tools"`
-	SystemAgent       *bool   `json:"system_agent"`
-	GlobalSkillAccess *bool   `json:"global_skill_access"`
+	Name              *string    `json:"name"            validate:"omitempty,min=1,max=255"`
+	CronExpression    *string    `json:"cron_expression"`
+	Prompt            *string    `json:"prompt"`
+	Enabled           *bool      `json:"enabled"`
+	MCPConfig         *string    `json:"mcp_config"`
+	AllowedTools      *string    `json:"allowed_tools"`
+	SystemAgent       *bool      `json:"system_agent"`
+	GlobalSkillAccess *bool      `json:"global_skill_access"`
+	OnSuccessTaskID   *uuid.UUID `json:"on_success_task_id"`
+	OnFailureTaskID   *uuid.UUID `json:"on_failure_task_id"`
 }
 
 type Response struct {
@@ -41,6 +45,8 @@ type Response struct {
 	Enabled           bool       `json:"enabled"`
 	SystemAgent       bool       `json:"system_agent"`
 	GlobalSkillAccess bool       `json:"global_skill_access"`
+	OnSuccessTaskID   *uuid.UUID `json:"on_success_task_id,omitempty"`
+	OnFailureTaskID   *uuid.UUID `json:"on_failure_task_id,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
@@ -58,6 +64,8 @@ func ToResponse(t *domain.AgentTask) Response {
 		Enabled:           t.Enabled,
 		SystemAgent:       t.SystemAgent,
 		GlobalSkillAccess: t.GlobalSkillAccess,
+		OnSuccessTaskID:   t.OnSuccessTaskID,
+		OnFailureTaskID:   t.OnFailureTaskID,
 		CreatedAt:         t.CreatedAt,
 		UpdatedAt:         t.UpdatedAt,
 	}

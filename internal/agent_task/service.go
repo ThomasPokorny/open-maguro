@@ -2,6 +2,7 @@ package agent_task
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"open-maguro/internal/domain"
@@ -36,7 +37,6 @@ func (s *Service) List(ctx context.Context) ([]domain.AgentTask, error) {
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (*domain.AgentTask, error) {
-	// For update, we first get the existing task, apply changes, then save
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -52,6 +52,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 		AllowedTools:      existing.AllowedTools,
 		SystemAgent:       &existing.SystemAgent,
 		GlobalSkillAccess: &existing.GlobalSkillAccess,
+		OnSuccessTaskID:   existing.OnSuccessTaskID,
+		OnFailureTaskID:   existing.OnFailureTaskID,
 	}
 	if req.Name != nil {
 		merged.Name = req.Name
@@ -77,10 +79,53 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	if req.GlobalSkillAccess != nil {
 		merged.GlobalSkillAccess = req.GlobalSkillAccess
 	}
+	if req.OnSuccessTaskID != nil {
+		merged.OnSuccessTaskID = req.OnSuccessTaskID
+	}
+	if req.OnFailureTaskID != nil {
+		merged.OnFailureTaskID = req.OnFailureTaskID
+	}
+
+	// Validate no circular chains
+	if err := s.validateNoChainCycle(ctx, id, merged.OnSuccessTaskID, merged.OnFailureTaskID); err != nil {
+		return nil, err
+	}
 
 	return s.repo.Update(ctx, id, merged)
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
+}
+
+// validateNoChainCycle follows the chain from the given triggers and ensures
+// it doesn't loop back to the source task id.
+func (s *Service) validateNoChainCycle(ctx context.Context, sourceID uuid.UUID, onSuccess, onFailure *uuid.UUID) error {
+	visited := map[uuid.UUID]bool{sourceID: true}
+
+	var check func(id *uuid.UUID) error
+	check = func(id *uuid.UUID) error {
+		if id == nil {
+			return nil
+		}
+		if visited[*id] {
+			return fmt.Errorf("circular chain detected: task %s would create a cycle", id)
+		}
+		visited[*id] = true
+		task, err := s.repo.GetByID(ctx, *id)
+		if err != nil {
+			return nil // target doesn't exist — not a cycle
+		}
+		if err := check(task.OnSuccessTaskID); err != nil {
+			return err
+		}
+		return check(task.OnFailureTaskID)
+	}
+
+	if err := check(onSuccess); err != nil {
+		return err
+	}
+	// Reset visited for failure path (only source is fixed)
+	visited = map[uuid.UUID]bool{sourceID: true}
+	return check(onFailure)
 }

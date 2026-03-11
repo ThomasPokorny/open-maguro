@@ -360,6 +360,175 @@ func TestAgentTaskRun(t *testing.T) {
 	assertStatus(t, resp, http.StatusNotFound)
 }
 
+func TestAgentChaining(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create three agents
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Agent A",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Do step A"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agentA map[string]any
+	parseJSON(t, resp, &agentA)
+	agentAID := agentA["id"].(string)
+
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Agent B",
+		"cron_expression": "0 10 * * *",
+		"prompt": "Do step B"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agentB map[string]any
+	parseJSON(t, resp, &agentB)
+	agentBID := agentB["id"].(string)
+
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Error Handler",
+		"cron_expression": "0 11 * * *",
+		"prompt": "Handle errors"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agentC map[string]any
+	parseJSON(t, resp, &agentC)
+	agentCID := agentC["id"].(string)
+
+	// Set Agent A's on_success to Agent B and on_failure to Agent C
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/agent-tasks/"+agentAID, `{
+		"on_success_task_id": "`+agentBID+`",
+		"on_failure_task_id": "`+agentCID+`"
+	}`)
+	assertStatus(t, resp, http.StatusOK)
+	var updated map[string]any
+	parseJSON(t, resp, &updated)
+	if updated["on_success_task_id"] != agentBID {
+		t.Fatalf("expected on_success_task_id %s, got %v", agentBID, updated["on_success_task_id"])
+	}
+	if updated["on_failure_task_id"] != agentCID {
+		t.Fatalf("expected on_failure_task_id %s, got %v", agentCID, updated["on_failure_task_id"])
+	}
+
+	// Verify via GET
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks/"+agentAID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var fetched map[string]any
+	parseJSON(t, resp, &fetched)
+	if fetched["on_success_task_id"] != agentBID {
+		t.Fatalf("expected on_success_task_id %s on GET, got %v", agentBID, fetched["on_success_task_id"])
+	}
+	if fetched["on_failure_task_id"] != agentCID {
+		t.Fatalf("expected on_failure_task_id %s on GET, got %v", agentCID, fetched["on_failure_task_id"])
+	}
+
+	// Verify chaining fields appear in list response
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks", "")
+	assertStatus(t, resp, http.StatusOK)
+	var list []map[string]any
+	parseJSON(t, resp, &list)
+	found := false
+	for _, task := range list {
+		if task["id"] == agentAID {
+			found = true
+			if task["on_success_task_id"] != agentBID {
+				t.Fatalf("expected on_success_task_id in list, got %v", task["on_success_task_id"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("agent A not found in list")
+	}
+}
+
+func TestAgentChainingOnCreate(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create target agent first
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Target Agent",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Target task"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var target map[string]any
+	parseJSON(t, resp, &target)
+	targetID := target["id"].(string)
+
+	// Create agent with chaining set at creation time
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Source Agent",
+		"cron_expression": "0 8 * * *",
+		"prompt": "Source task",
+		"on_success_task_id": "`+targetID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	if created["on_success_task_id"] != targetID {
+		t.Fatalf("expected on_success_task_id %s on create, got %v", targetID, created["on_success_task_id"])
+	}
+}
+
+func TestAgentChainingCycleDetection(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create Agent A
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Agent A",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Do A"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agentA map[string]any
+	parseJSON(t, resp, &agentA)
+	agentAID := agentA["id"].(string)
+
+	// Create Agent B with on_success pointing to A
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Agent B",
+		"cron_expression": "0 10 * * *",
+		"prompt": "Do B",
+		"on_success_task_id": "`+agentAID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agentB map[string]any
+	parseJSON(t, resp, &agentB)
+	agentBID := agentB["id"].(string)
+
+	// Try to set A's on_success to B — should fail with 409 (A -> B -> A cycle)
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/agent-tasks/"+agentAID, `{
+		"on_success_task_id": "`+agentBID+`"
+	}`)
+	assertStatus(t, resp, http.StatusConflict)
+	var errResp map[string]any
+	parseJSON(t, resp, &errResp)
+	errMsg, ok := errResp["error"].(string)
+	if !ok || errMsg == "" {
+		t.Fatalf("expected error message about circular chain, got %v", errResp)
+	}
+
+	// Also test on_failure cycle: Create Agent C -> A, then try A.on_failure = C
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Agent C",
+		"cron_expression": "0 11 * * *",
+		"prompt": "Do C",
+		"on_failure_task_id": "`+agentAID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agentC map[string]any
+	parseJSON(t, resp, &agentC)
+	agentCID := agentC["id"].(string)
+
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/agent-tasks/"+agentAID, `{
+		"on_failure_task_id": "`+agentCID+`"
+	}`)
+	assertStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+}
+
 func TestExecutionsList(t *testing.T) {
 	srv, cleanup := SetupTestServer(t)
 	defer cleanup()
@@ -372,6 +541,53 @@ func TestExecutionsList(t *testing.T) {
 	parseJSON(t, resp, &list)
 	if len(list) != 0 {
 		t.Fatalf("expected 0 executions, got %d", len(list))
+	}
+}
+
+func TestExecutionResponseShape(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create and run an agent to generate an execution
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Shape test agent",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Say hello"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var task map[string]any
+	parseJSON(t, resp, &task)
+	taskID := task["id"].(string)
+
+	// Trigger execution (will fail since no claude CLI, but creates the record)
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks/"+taskID+"/run", "")
+	assertStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+
+	// Wait briefly for the execution record to be created
+	time.Sleep(500 * time.Millisecond)
+
+	// Check executions for this agent
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks/"+taskID+"/executions", "")
+	assertStatus(t, resp, http.StatusOK)
+	var executions []map[string]any
+	parseJSON(t, resp, &executions)
+
+	if len(executions) == 0 {
+		t.Skip("no execution record created (expected in test env without claude CLI)")
+	}
+
+	// Verify response shape includes triggered_by_execution_id
+	exec := executions[0]
+	requiredFields := []string{"id", "status", "created_at"}
+	for _, field := range requiredFields {
+		if _, ok := exec[field]; !ok {
+			t.Fatalf("execution response missing required field: %s", field)
+		}
+	}
+	// triggered_by_execution_id should be absent (omitempty) or null for non-chained executions
+	if val, ok := exec["triggered_by_execution_id"]; ok && val != nil {
+		t.Fatalf("expected triggered_by_execution_id to be nil for non-chained execution, got %v", val)
 	}
 }
 

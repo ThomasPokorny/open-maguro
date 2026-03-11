@@ -17,13 +17,14 @@ const (
 )
 
 type TaskExecution struct {
-	ID          uuid.UUID
-	AgentTaskID *uuid.UUID
-	TaskName    *string
-	Status      ExecutionStatus
-	StartedAt   *time.Time
-	FinishedAt  *time.Time
-	Summary     *string
-	Error       *string
-	CreatedAt   time.Time
+	ID                     uuid.UUID
+	AgentTaskID            *uuid.UUID
+	TaskName               *string
+	Status                 ExecutionStatus
+	StartedAt              *time.Time
+	FinishedAt             *time.Time
+	Summary                *string
+	Error                  *string
+	TriggeredByExecutionID *uuid.UUID
+	CreatedAt              time.Time
 }

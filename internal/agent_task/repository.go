@@ -51,6 +51,15 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		globalSkillAccess = *params.GlobalSkillAccess
 	}
 
+	onSuccessTaskID := pgtype.UUID{}
+	if params.OnSuccessTaskID != nil {
+		onSuccessTaskID = pgtype.UUID{Bytes: *params.OnSuccessTaskID, Valid: true}
+	}
+	onFailureTaskID := pgtype.UUID{}
+	if params.OnFailureTaskID != nil {
+		onFailureTaskID = pgtype.UUID{Bytes: *params.OnFailureTaskID, Valid: true}
+	}
+
 	row, err := r.queries.CreateAgentTask(ctx, sqlcgen.CreateAgentTaskParams{
 		Name:              params.Name,
 		CronExpression:    pgtype.Text{String: params.CronExpression, Valid: true},
@@ -60,6 +69,8 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		AllowedTools:      allowedTools,
 		SystemAgent:       systemAgent,
 		GlobalSkillAccess: globalSkillAccess,
+		OnSuccessTaskID:   onSuccessTaskID,
+		OnFailureTaskID:   onFailureTaskID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent task: %w", err)
@@ -117,6 +128,15 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		globalSkillAccess = *params.GlobalSkillAccess
 	}
 
+	onSuccessTaskID := pgtype.UUID{}
+	if params.OnSuccessTaskID != nil {
+		onSuccessTaskID = pgtype.UUID{Bytes: *params.OnSuccessTaskID, Valid: true}
+	}
+	onFailureTaskID := pgtype.UUID{}
+	if params.OnFailureTaskID != nil {
+		onFailureTaskID = pgtype.UUID{Bytes: *params.OnFailureTaskID, Valid: true}
+	}
+
 	row, err := r.queries.UpdateAgentTask(ctx, sqlcgen.UpdateAgentTaskParams{
 		ID:                id,
 		Name:              *params.Name,
@@ -127,6 +147,8 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		AllowedTools:      allowedTools,
 		SystemAgent:       systemAgent,
 		GlobalSkillAccess: globalSkillAccess,
+		OnSuccessTaskID:   onSuccessTaskID,
+		OnFailureTaskID:   onFailureTaskID,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -223,6 +245,14 @@ func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	if row.AllowedTools.Valid {
 		s := row.AllowedTools.String
 		task.AllowedTools = &s
+	}
+	if row.OnSuccessTaskID.Valid {
+		id := uuid.UUID(row.OnSuccessTaskID.Bytes)
+		task.OnSuccessTaskID = &id
+	}
+	if row.OnFailureTaskID.Valid {
+		id := uuid.UUID(row.OnFailureTaskID.Bytes)
+		task.OnFailureTaskID = &id
 	}
 	return task
 }

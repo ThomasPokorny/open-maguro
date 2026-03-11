@@ -97,8 +97,8 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 	skillRepo := skill.NewPostgresRepository(pool)
 
 	// Wire up executor (no real claude CLI in tests) and scheduler
-	exec := executor.New(taskExecRepo, skillRepo, "", nil)
-	sched := scheduler.New(agentTaskRepo, agentTaskRepo, exec)
+	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, "", nil)
+	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec)
 
 	// Wire up services and handlers
 	agentTaskService := agent_task.NewService(agentTaskRepo)

@@ -76,6 +76,8 @@ type AgentTask struct {
 	AllowedTools      pgtype.Text        `json:"allowed_tools"`
 	SystemAgent       bool               `json:"system_agent"`
 	GlobalSkillAccess bool               `json:"global_skill_access"`
+	OnSuccessTaskID   pgtype.UUID        `json:"on_success_task_id"`
+	OnFailureTaskID   pgtype.UUID        `json:"on_failure_task_id"`
 }
 
 type Skill struct {
@@ -87,13 +89,14 @@ type Skill struct {
 }
 
 type TaskExecution struct {
-	ID          uuid.UUID          `json:"id"`
-	AgentTaskID pgtype.UUID        `json:"agent_task_id"`
-	Status      ExecutionStatus    `json:"status"`
-	StartedAt   pgtype.Timestamptz `json:"started_at"`
-	FinishedAt  pgtype.Timestamptz `json:"finished_at"`
-	Summary     pgtype.Text        `json:"summary"`
-	Error       pgtype.Text        `json:"error"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	TaskName    pgtype.Text        `json:"task_name"`
+	ID                     uuid.UUID          `json:"id"`
+	AgentTaskID            pgtype.UUID        `json:"agent_task_id"`
+	Status                 ExecutionStatus    `json:"status"`
+	StartedAt              pgtype.Timestamptz `json:"started_at"`
+	FinishedAt             pgtype.Timestamptz `json:"finished_at"`
+	Summary                pgtype.Text        `json:"summary"`
+	Error                  pgtype.Text        `json:"error"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	TaskName               pgtype.Text        `json:"task_name"`
+	TriggeredByExecutionID pgtype.UUID        `json:"triggered_by_execution_id"`
 }

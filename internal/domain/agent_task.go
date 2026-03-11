@@ -23,6 +23,8 @@ type AgentTask struct {
 	Enabled           bool
 	SystemAgent       bool
 	GlobalSkillAccess bool
+	OnSuccessTaskID   *uuid.UUID
+	OnFailureTaskID   *uuid.UUID
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

@@ -3,6 +3,7 @@ package task_execution
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -71,11 +72,16 @@ func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID 
 	return executions, nil
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus, taskName string) (*domain.TaskExecution, error) {
+func (r *PostgresRepository) Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus, taskName string, triggeredByExecutionID *uuid.UUID) (*domain.TaskExecution, error) {
+	triggeredBy := pgtype.UUID{}
+	if triggeredByExecutionID != nil {
+		triggeredBy = pgtype.UUID{Bytes: *triggeredByExecutionID, Valid: true}
+	}
 	row, err := r.queries.CreateTaskExecution(ctx, sqlcgen.CreateTaskExecutionParams{
-		AgentTaskID: pgtype.UUID{Bytes: agentTaskID, Valid: true},
-		Status:      sqlcgen.ExecutionStatus(status),
-		TaskName:    pgtype.Text{String: taskName, Valid: taskName != ""},
+		AgentTaskID:            pgtype.UUID{Bytes: agentTaskID, Valid: true},
+		Status:                 sqlcgen.ExecutionStatus(status),
+		TaskName:               pgtype.Text{String: taskName, Valid: taskName != ""},
+		TriggeredByExecutionID: triggeredBy,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create task execution: %w", err)
@@ -96,6 +102,35 @@ func (r *PostgresRepository) UpdateStatus(ctx context.Context, params UpdateStat
 		return nil, fmt.Errorf("update task execution status: %w", err)
 	}
 	return toDomain(row), nil
+}
+
+func (r *PostgresRepository) GetLatestByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) (*domain.TaskExecution, error) {
+	row, err := r.queries.GetLatestExecutionByAgentTaskID(ctx, pgtype.UUID{Bytes: agentTaskID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("get latest execution by agent task: %w", err)
+	}
+	return toDomain(row), nil
+}
+
+func (r *PostgresRepository) MarkStaleExecutionsFailed(ctx context.Context, staleBefore time.Time) (int, error) {
+	rows, err := r.queries.ListStaleRunningExecutions(ctx, pgtype.Timestamptz{Time: staleBefore, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("list stale running executions: %w", err)
+	}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	for _, row := range rows {
+		_, err := r.queries.UpdateTaskExecutionStatus(ctx, sqlcgen.UpdateTaskExecutionStatusParams{
+			ID:         row.ID,
+			Status:     sqlcgen.ExecutionStatusFailure,
+			StartedAt:  row.StartedAt,
+			FinishedAt: now,
+			Error:      pgtype.Text{String: "marked as failed by heartbeat: execution appeared stale", Valid: true},
+		})
+		if err != nil {
+			return 0, fmt.Errorf("mark stale execution failed: %w", err)
+		}
+	}
+	return len(rows), nil
 }
 
 func toDomain(row sqlcgen.TaskExecution) *domain.TaskExecution {
@@ -127,6 +162,10 @@ func toDomain(row sqlcgen.TaskExecution) *domain.TaskExecution {
 	if row.Error.Valid {
 		s := row.Error.String
 		exec.Error = &s
+	}
+	if row.TriggeredByExecutionID.Valid {
+		id := uuid.UUID(row.TriggeredByExecutionID.Bytes)
+		exec.TriggeredByExecutionID = &id
 	}
 	return exec
 }

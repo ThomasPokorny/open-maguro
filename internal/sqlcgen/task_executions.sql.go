@@ -13,19 +13,25 @@ import (
 )
 
 const createTaskExecution = `-- name: CreateTaskExecution :one
-INSERT INTO task_executions (agent_task_id, status, task_name)
-VALUES ($1, $2, $3)
-RETURNING id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name
+INSERT INTO task_executions (agent_task_id, status, task_name, triggered_by_execution_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id
 `
 
 type CreateTaskExecutionParams struct {
-	AgentTaskID pgtype.UUID     `json:"agent_task_id"`
-	Status      ExecutionStatus `json:"status"`
-	TaskName    pgtype.Text     `json:"task_name"`
+	AgentTaskID            pgtype.UUID     `json:"agent_task_id"`
+	Status                 ExecutionStatus `json:"status"`
+	TaskName               pgtype.Text     `json:"task_name"`
+	TriggeredByExecutionID pgtype.UUID     `json:"triggered_by_execution_id"`
 }
 
 func (q *Queries) CreateTaskExecution(ctx context.Context, arg CreateTaskExecutionParams) (TaskExecution, error) {
-	row := q.db.QueryRow(ctx, createTaskExecution, arg.AgentTaskID, arg.Status, arg.TaskName)
+	row := q.db.QueryRow(ctx, createTaskExecution,
+		arg.AgentTaskID,
+		arg.Status,
+		arg.TaskName,
+		arg.TriggeredByExecutionID,
+	)
 	var i TaskExecution
 	err := row.Scan(
 		&i.ID,
@@ -37,12 +43,38 @@ func (q *Queries) CreateTaskExecution(ctx context.Context, arg CreateTaskExecuti
 		&i.Error,
 		&i.CreatedAt,
 		&i.TaskName,
+		&i.TriggeredByExecutionID,
+	)
+	return i, err
+}
+
+const getLatestExecutionByAgentTaskID = `-- name: GetLatestExecutionByAgentTaskID :one
+SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
+WHERE agent_task_id = $1
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestExecutionByAgentTaskID(ctx context.Context, agentTaskID pgtype.UUID) (TaskExecution, error) {
+	row := q.db.QueryRow(ctx, getLatestExecutionByAgentTaskID, agentTaskID)
+	var i TaskExecution
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTaskID,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Summary,
+		&i.Error,
+		&i.CreatedAt,
+		&i.TaskName,
+		&i.TriggeredByExecutionID,
 	)
 	return i, err
 }
 
 const getTaskExecution = `-- name: GetTaskExecution :one
-SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name FROM task_executions WHERE id = $1
+SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions WHERE id = $1
 `
 
 func (q *Queries) GetTaskExecution(ctx context.Context, id uuid.UUID) (TaskExecution, error) {
@@ -58,12 +90,50 @@ func (q *Queries) GetTaskExecution(ctx context.Context, id uuid.UUID) (TaskExecu
 		&i.Error,
 		&i.CreatedAt,
 		&i.TaskName,
+		&i.TriggeredByExecutionID,
 	)
 	return i, err
 }
 
+const listStaleRunningExecutions = `-- name: ListStaleRunningExecutions :many
+SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
+WHERE status = 'running'
+AND started_at < $1
+`
+
+func (q *Queries) ListStaleRunningExecutions(ctx context.Context, startedAt pgtype.Timestamptz) ([]TaskExecution, error) {
+	rows, err := q.db.Query(ctx, listStaleRunningExecutions, startedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TaskExecution{}
+	for rows.Next() {
+		var i TaskExecution
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentTaskID,
+			&i.Status,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Summary,
+			&i.Error,
+			&i.CreatedAt,
+			&i.TaskName,
+			&i.TriggeredByExecutionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaskExecutions = `-- name: ListTaskExecutions :many
-SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name FROM task_executions
+SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
 ORDER BY created_at DESC
 `
 
@@ -86,6 +156,7 @@ func (q *Queries) ListTaskExecutions(ctx context.Context) ([]TaskExecution, erro
 			&i.Error,
 			&i.CreatedAt,
 			&i.TaskName,
+			&i.TriggeredByExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -98,7 +169,7 @@ func (q *Queries) ListTaskExecutions(ctx context.Context) ([]TaskExecution, erro
 }
 
 const listTaskExecutionsByAgentTaskID = `-- name: ListTaskExecutionsByAgentTaskID :many
-SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name FROM task_executions
+SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
 WHERE agent_task_id = $1
 ORDER BY created_at DESC
 `
@@ -122,6 +193,7 @@ func (q *Queries) ListTaskExecutionsByAgentTaskID(ctx context.Context, agentTask
 			&i.Error,
 			&i.CreatedAt,
 			&i.TaskName,
+			&i.TriggeredByExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -141,7 +213,7 @@ SET status = $2,
     summary = $5,
     error = $6
 WHERE id = $1
-RETURNING id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name
+RETURNING id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id
 `
 
 type UpdateTaskExecutionStatusParams struct {
@@ -173,6 +245,7 @@ func (q *Queries) UpdateTaskExecutionStatus(ctx context.Context, arg UpdateTaskE
 		&i.Error,
 		&i.CreatedAt,
 		&i.TaskName,
+		&i.TriggeredByExecutionID,
 	)
 	return i, err
 }

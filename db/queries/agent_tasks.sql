@@ -25,8 +25,8 @@ WHERE enabled = true AND task_type = 'one_time'
 ORDER BY run_at ASC;
 
 -- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'cron')
+INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, task_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'cron')
 RETURNING *;
 
 -- name: CreateScheduledTask :one
@@ -44,6 +44,8 @@ SET name = $2,
     allowed_tools = $7,
     system_agent = $8,
     global_skill_access = $9,
+    on_success_task_id = $10,
+    on_failure_task_id = $11,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

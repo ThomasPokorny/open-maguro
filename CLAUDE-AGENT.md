@@ -78,7 +78,7 @@ curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{id} \
   -d '{"enabled": false}'
 ```
 
-Any field can be updated: `name`, `cron_expression`, `prompt`, `enabled`.
+Any field can be updated: `name`, `cron_expression`, `prompt`, `enabled`, `on_success_task_id`, `on_failure_task_id`.
 
 ### Delete a Task
 
@@ -104,7 +104,25 @@ curl http://localhost:8080/api/v1/agent-tasks/{taskId}/executions
 curl http://localhost:8080/api/v1/executions/{id}
 ```
 
-Execution fields: `status` (pending/running/success/failure), `started_at`, `finished_at`, `summary`, `error`, `task_name`.
+Execution fields: `status` (pending/running/success/failure), `started_at`, `finished_at`, `summary`, `error`, `task_name`, `triggered_by_execution_id`.
+
+### Agent Chaining
+
+Chain agents so one triggers another on success or failure:
+
+```bash
+# Set agent B to run after agent A succeeds
+curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{agentA_id} \
+  -H 'Content-Type: application/json' \
+  -d '{"on_success_task_id": "{agentB_id}"}'
+
+# Set a failure handler
+curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{agentA_id} \
+  -H 'Content-Type: application/json' \
+  -d '{"on_failure_task_id": "{errorHandler_id}"}'
+```
+
+The chained agent receives the parent agent's output as context. Circular chains are rejected.
 
 ### Skills Management
 
@@ -148,6 +166,10 @@ To give an agent access to **all** skills, set `global_skill_access: true` on th
 **"Run task X now"** → POST to `/api/v1/agent-tasks/{id}/run` to trigger immediate execution.
 
 **"Change the schedule of X"** → PATCH with the new `cron_expression`.
+
+**"When task A finishes, run task B"** → PATCH agent A with `{"on_success_task_id": "<B's UUID>"}`.
+
+**"If task A fails, run task C"** → PATCH agent A with `{"on_failure_task_id": "<C's UUID>"}`.
 
 **"I want agents to know about X API/tool"** → Create a skill with relevant instructions and API credentials. Attach it to the agents that need it, or give it to all agents via `global_skill_access`.
 

@@ -13,9 +13,9 @@ import (
 )
 
 const createAgentTask = `-- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'cron')
-RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access
+INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, task_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'cron')
+RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id
 `
 
 type CreateAgentTaskParams struct {
@@ -27,6 +27,8 @@ type CreateAgentTaskParams struct {
 	AllowedTools      pgtype.Text `json:"allowed_tools"`
 	SystemAgent       bool        `json:"system_agent"`
 	GlobalSkillAccess bool        `json:"global_skill_access"`
+	OnSuccessTaskID   pgtype.UUID `json:"on_success_task_id"`
+	OnFailureTaskID   pgtype.UUID `json:"on_failure_task_id"`
 }
 
 func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams) (AgentTask, error) {
@@ -39,6 +41,8 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		arg.AllowedTools,
 		arg.SystemAgent,
 		arg.GlobalSkillAccess,
+		arg.OnSuccessTaskID,
+		arg.OnFailureTaskID,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -55,6 +59,8 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		&i.AllowedTools,
 		&i.SystemAgent,
 		&i.GlobalSkillAccess,
+		&i.OnSuccessTaskID,
+		&i.OnFailureTaskID,
 	)
 	return i, err
 }
@@ -62,7 +68,7 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 const createScheduledTask = `-- name: CreateScheduledTask :one
 INSERT INTO agent_tasks (name, prompt, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
 VALUES ($1, $2, $3, $4, $5, $6, $7, 'one_time')
-RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access
+RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id
 `
 
 type CreateScheduledTaskParams struct {
@@ -100,6 +106,8 @@ func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTa
 		&i.AllowedTools,
 		&i.SystemAgent,
 		&i.GlobalSkillAccess,
+		&i.OnSuccessTaskID,
+		&i.OnFailureTaskID,
 	)
 	return i, err
 }
@@ -114,7 +122,7 @@ func (q *Queries) DeleteAgentTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const getAgentTask = `-- name: GetAgentTask :one
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks WHERE id = $1
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id FROM agent_tasks WHERE id = $1
 `
 
 func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, error) {
@@ -134,12 +142,14 @@ func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, er
 		&i.AllowedTools,
 		&i.SystemAgent,
 		&i.GlobalSkillAccess,
+		&i.OnSuccessTaskID,
+		&i.OnFailureTaskID,
 	)
 	return i, err
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks ORDER BY created_at DESC
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id FROM agent_tasks ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
@@ -165,6 +175,8 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 			&i.AllowedTools,
 			&i.SystemAgent,
 			&i.GlobalSkillAccess,
+			&i.OnSuccessTaskID,
+			&i.OnFailureTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -177,7 +189,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 }
 
 const listEnabledCronTasks = `-- name: ListEnabledCronTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id FROM agent_tasks
 WHERE enabled = true AND task_type = 'cron'
 ORDER BY created_at DESC
 `
@@ -205,6 +217,8 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 			&i.AllowedTools,
 			&i.SystemAgent,
 			&i.GlobalSkillAccess,
+			&i.OnSuccessTaskID,
+			&i.OnFailureTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -217,7 +231,7 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 }
 
 const listPendingScheduledTasks = `-- name: ListPendingScheduledTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id FROM agent_tasks
 WHERE enabled = true AND task_type = 'one_time'
 ORDER BY run_at ASC
 `
@@ -245,6 +259,8 @@ func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, e
 			&i.AllowedTools,
 			&i.SystemAgent,
 			&i.GlobalSkillAccess,
+			&i.OnSuccessTaskID,
+			&i.OnFailureTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -257,7 +273,7 @@ func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, e
 }
 
 const listSystemAgentTasks = `-- name: ListSystemAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id FROM agent_tasks
 WHERE system_agent = true
 ORDER BY created_at DESC
 `
@@ -285,6 +301,8 @@ func (q *Queries) ListSystemAgentTasks(ctx context.Context) ([]AgentTask, error)
 			&i.AllowedTools,
 			&i.SystemAgent,
 			&i.GlobalSkillAccess,
+			&i.OnSuccessTaskID,
+			&i.OnFailureTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -297,7 +315,7 @@ func (q *Queries) ListSystemAgentTasks(ctx context.Context) ([]AgentTask, error)
 }
 
 const listUserAgentTasks = `-- name: ListUserAgentTasks :many
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access FROM agent_tasks
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id FROM agent_tasks
 WHERE system_agent = false
 ORDER BY created_at DESC
 `
@@ -325,6 +343,8 @@ func (q *Queries) ListUserAgentTasks(ctx context.Context) ([]AgentTask, error) {
 			&i.AllowedTools,
 			&i.SystemAgent,
 			&i.GlobalSkillAccess,
+			&i.OnSuccessTaskID,
+			&i.OnFailureTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -346,9 +366,11 @@ SET name = $2,
     allowed_tools = $7,
     system_agent = $8,
     global_skill_access = $9,
+    on_success_task_id = $10,
+    on_failure_task_id = $11,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access
+RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id
 `
 
 type UpdateAgentTaskParams struct {
@@ -361,6 +383,8 @@ type UpdateAgentTaskParams struct {
 	AllowedTools      pgtype.Text `json:"allowed_tools"`
 	SystemAgent       bool        `json:"system_agent"`
 	GlobalSkillAccess bool        `json:"global_skill_access"`
+	OnSuccessTaskID   pgtype.UUID `json:"on_success_task_id"`
+	OnFailureTaskID   pgtype.UUID `json:"on_failure_task_id"`
 }
 
 func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams) (AgentTask, error) {
@@ -374,6 +398,8 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		arg.AllowedTools,
 		arg.SystemAgent,
 		arg.GlobalSkillAccess,
+		arg.OnSuccessTaskID,
+		arg.OnFailureTaskID,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -390,6 +416,8 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		&i.AllowedTools,
 		&i.SystemAgent,
 		&i.GlobalSkillAccess,
+		&i.OnSuccessTaskID,
+		&i.OnFailureTaskID,
 	)
 	return i, err
 }

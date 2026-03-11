@@ -11,8 +11,8 @@ WHERE agent_task_id = $1
 ORDER BY created_at DESC;
 
 -- name: CreateTaskExecution :one
-INSERT INTO task_executions (agent_task_id, status, task_name)
-VALUES ($1, $2, $3)
+INSERT INTO task_executions (agent_task_id, status, task_name, triggered_by_execution_id)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: UpdateTaskExecutionStatus :one
@@ -24,3 +24,14 @@ SET status = $2,
     error = $6
 WHERE id = $1
 RETURNING *;
+
+-- name: GetLatestExecutionByAgentTaskID :one
+SELECT * FROM task_executions
+WHERE agent_task_id = $1
+ORDER BY created_at DESC
+LIMIT 1;
+
+-- name: ListStaleRunningExecutions :many
+SELECT * FROM task_executions
+WHERE status = 'running'
+AND started_at < $1;

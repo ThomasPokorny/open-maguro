@@ -52,6 +52,10 @@ When a row is expanded, show an **edit form** with all agent properties:
 - `allowed_tools` (text input, comma-separated, optional)
 - `system_agent` (toggle)
 - `global_skill_access` (toggle)
+- `on_success_task_id` (dropdown — select from existing agent tasks, or empty/null for "None")
+- `on_failure_task_id` (dropdown — select from existing agent tasks, or empty/null for "None")
+
+**Chaining Note:** When `on_success_task_id` or `on_failure_task_id` is set, show a small visual indicator (e.g. a chain icon or "→ Agent Name" badge) on the collapsed row. The API rejects circular chains — display the error if the user tries to create one.
 
 Below the form fields, show a **Skills Assignment** section:
 - List of currently assigned skills (as removable chips/tags)
@@ -64,7 +68,7 @@ Action buttons at the bottom of the expanded section:
 
 ### Create Agent
 
-A **"+ New Agent"** button at the top of the list that opens a creation form (can be inline at the top or a modal). Fields: `name`, `cron_expression`, `prompt`. Optional: `enabled`, `mcp_config`, `allowed_tools`, `system_agent`, `global_skill_access`.
+A **"+ New Agent"** button at the top of the list that opens a creation form (can be inline at the top or a modal). Fields: `name`, `cron_expression`, `prompt`. Optional: `enabled`, `mcp_config`, `allowed_tools`, `system_agent`, `global_skill_access`, `on_success_task_id`, `on_failure_task_id`.
 
 ---
 
@@ -128,7 +132,9 @@ Content-Type: application/json
   "mcp_config": null,
   "allowed_tools": null,
   "system_agent": false,
-  "global_skill_access": false
+  "global_skill_access": false,
+  "on_success_task_id": null,
+  "on_failure_task_id": null
 }
 ```
 Response `201`: Created agent object.
@@ -171,6 +177,8 @@ Response `202`: `{"status": "accepted"}`. Execution runs in background.
   "enabled": true,
   "system_agent": false,
   "global_skill_access": false,
+  "on_success_task_id": null,
+  "on_failure_task_id": null,
   "created_at": "2026-03-05T10:00:00Z",
   "updated_at": "2026-03-05T10:00:00Z"
 }
@@ -277,6 +285,7 @@ GET /api/v1/executions/{id}
   "finished_at": "2026-03-05T06:01:30Z",
   "summary": "string or null",
   "error": "string or null",
+  "triggered_by_execution_id": "uuid or null",
   "created_at": "2026-03-05T06:00:00Z"
 }
 ```

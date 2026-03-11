@@ -73,6 +73,8 @@ Request body:
 | `allowed_tools` | string | No | — | Comma-separated extra tool patterns (additive to global) |
 | `system_agent` | bool | No | `false` | Mark as internal system agent |
 | `global_skill_access` | bool | No | `false` | Grant access to all skills (instead of only assigned ones) |
+| `on_success_task_id` | uuid | No | — | Agent task to trigger when this task succeeds |
+| `on_failure_task_id` | uuid | No | — | Agent task to trigger when this task fails |
 
 Response `201`:
 ```json
@@ -83,6 +85,8 @@ Response `201`:
   "prompt": "Generate the daily sales report and email it to the team",
   "enabled": true,
   "system_agent": false,
+  "on_success_task_id": null,
+  "on_failure_task_id": null,
   "created_at": "2026-03-05T10:00:00Z",
   "updated_at": "2026-03-05T10:00:00Z"
 }
@@ -145,6 +149,30 @@ Response `202`:
 Response `404`: `{"error": "agent task not found"}`
 
 Check execution results via `GET /api/v1/agent-tasks/{id}/executions`.
+
+---
+
+### Agent Chaining
+
+Chain agents together so one triggers another on success or failure. Set `on_success_task_id` and/or `on_failure_task_id` when creating or updating an agent task.
+
+```bash
+curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{id} \
+  -H 'Content-Type: application/json' \
+  -d '{"on_success_task_id": "uuid-of-next-agent"}'
+```
+
+When an agent completes, the chained agent receives the parent's output as context in its prompt. Circular chains are rejected at create/update time. Chained executions include `triggered_by_execution_id` for traceability.
+
+---
+
+### Heartbeat & Recovery
+
+The scheduler runs a heartbeat every 10 minutes that:
+- **Detects missed cron jobs**: looks back 24 hours, compares expected fire times against actual executions, and triggers any missed runs
+- **Marks stale executions**: any execution stuck in `running` status for over 2 hours is marked as `failed`
+
+This ensures tasks are recovered even after server restarts or downtime.
 
 ---
 
@@ -334,6 +362,7 @@ Response `200`:
     "started_at": "2026-03-05T06:00:00Z",
     "finished_at": "2026-03-05T06:01:30Z",
     "summary": "Generated and sent the daily sales report successfully",
+    "triggered_by_execution_id": null,
     "created_at": "2026-03-05T06:00:00Z"
   }
 ]

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -133,6 +134,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	task, err := h.service.Update(r.Context(), id, req)
 	if err != nil {
+		if strings.Contains(err.Error(), "circular chain detected") {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusNotFound, "agent task not found")
 		return
 	}

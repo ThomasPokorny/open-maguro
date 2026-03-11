@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"os/exec"
 	"strings"
@@ -16,7 +17,7 @@ import (
 
 // ExecutionRepository defines the DB operations the executor needs.
 type ExecutionRepository interface {
-	Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus, taskName string) (*domain.TaskExecution, error)
+	Create(ctx context.Context, agentTaskID uuid.UUID, status domain.ExecutionStatus, taskName string, triggeredByExecutionID *uuid.UUID) (*domain.TaskExecution, error)
 	UpdateStatus(ctx context.Context, params task_execution.UpdateStatusParams) (*domain.TaskExecution, error)
 }
 
@@ -26,28 +27,39 @@ type SkillLoader interface {
 	List(ctx context.Context) ([]domain.Skill, error)
 }
 
+// TaskLoader loads agent tasks (used for chaining).
+type TaskLoader interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.AgentTask, error)
+}
+
 const systemPrompt = `# OpenMaguro🐟 Agent Orchestrator.
 You are an agent orchestrated by the OpenMaguro🐟 Agent Orchestrator project. Similarly to OpenClaw, users can create agents and schedule them fulfilling different tasks. This is a task running in the background. So there is no means of getting additional tool calls whitelisted. Try to fulfill the user request by all means.`
 
 type Executor struct {
 	repo            ExecutionRepository
 	skillLoader     SkillLoader
+	taskLoader      TaskLoader
 	globalMCPConfig string
 	allowedTools    []string
 }
 
-func New(repo ExecutionRepository, skillLoader SkillLoader, globalMCPConfig string, allowedTools []string) *Executor {
-	return &Executor{repo: repo, skillLoader: skillLoader, globalMCPConfig: globalMCPConfig, allowedTools: allowedTools}
+func New(repo ExecutionRepository, skillLoader SkillLoader, taskLoader TaskLoader, globalMCPConfig string, allowedTools []string) *Executor {
+	return &Executor{repo: repo, skillLoader: skillLoader, taskLoader: taskLoader, globalMCPConfig: globalMCPConfig, allowedTools: allowedTools}
 }
 
 // Run executes a single agent task. Safe to call from a goroutine.
 // If onComplete is non-nil, it is called after execution finishes (used for auto-delete).
 func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete func()) {
+	e.runInternal(ctx, task, nil, "", onComplete)
+}
+
+// runInternal handles execution with optional chain context.
+func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, triggeredByExecID *uuid.UUID, chainContext string, onComplete func()) {
 	logger := slog.With("task_id", task.ID, "task_name", task.Name)
 	logger.Info("starting task execution")
 
 	// Create execution record (pending)
-	execution, err := e.repo.Create(ctx, task.ID, domain.StatusPending, task.Name)
+	execution, err := e.repo.Create(ctx, task.ID, domain.StatusPending, task.Name, triggeredByExecID)
 	if err != nil {
 		logger.Error("failed to create execution record", "error", err)
 		return
@@ -91,6 +103,11 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 		}
 	}
 
+	// Prepend chain context if this was triggered by another agent
+	if chainContext != "" {
+		prompt = chainContext + "\n\n" + prompt
+	}
+
 	// Prepend system prompt
 	prompt = systemPrompt + "\n\n" + prompt
 
@@ -105,8 +122,10 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 		FinishedAt: finishedAt,
 	}
 
+	var finalStatus domain.ExecutionStatus
 	switch {
 	case runErr != nil:
+		finalStatus = domain.StatusFailure
 		updateParams.Status = domain.StatusFailure
 		errMsg := stderr
 		if errMsg == "" {
@@ -119,6 +138,7 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 		execLogger.Error("task execution failed", "error", runErr)
 
 	default:
+		finalStatus = domain.StatusSuccess
 		updateParams.Status = domain.StatusSuccess
 		updateParams.Summary = pgtype.Text{String: stdout, Valid: true}
 		execLogger.Info("task execution succeeded")
@@ -128,9 +148,61 @@ func (e *Executor) Run(ctx context.Context, task domain.AgentTask, onComplete fu
 		execLogger.Error("failed to update execution result", "error", err)
 	}
 
+	// Trigger chained agent if configured
+	e.triggerChain(ctx, task, execution.ID, finalStatus, stdout, stderr)
+
 	if onComplete != nil {
 		onComplete()
 	}
+}
+
+// triggerChain fires the on_success or on_failure chained agent if configured.
+func (e *Executor) triggerChain(ctx context.Context, task domain.AgentTask, executionID uuid.UUID, status domain.ExecutionStatus, stdout, stderr string) {
+	if e.taskLoader == nil {
+		return
+	}
+
+	var nextTaskID *uuid.UUID
+	switch status {
+	case domain.StatusSuccess:
+		nextTaskID = task.OnSuccessTaskID
+	case domain.StatusFailure:
+		nextTaskID = task.OnFailureTaskID
+	}
+
+	if nextTaskID == nil {
+		return
+	}
+
+	nextTask, err := e.taskLoader.GetByID(ctx, *nextTaskID)
+	if err != nil {
+		slog.Error("failed to load chained task",
+			"task_id", task.ID,
+			"chained_task_id", nextTaskID,
+			"error", err,
+		)
+		return
+	}
+
+	// Build chain context with parent output
+	var chainCtx string
+	output := stdout
+	if status == domain.StatusFailure {
+		output = stderr
+		if output == "" {
+			output = "(no error output)"
+		}
+	}
+	chainCtx = fmt.Sprintf("This task was triggered by agent %q (execution: %s, status: %s).\n\nOutput from the triggering agent:\n---\n%s\n---",
+		task.Name, executionID, status, output)
+
+	slog.Info("triggering chained agent",
+		"parent_task", task.Name,
+		"chained_task", nextTask.Name,
+		"trigger", string(status),
+	)
+
+	go e.runInternal(ctx, *nextTask, &executionID, chainCtx, nil)
 }
 
 func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig string, extraTools []string) (stdout, stderr string, err error) {

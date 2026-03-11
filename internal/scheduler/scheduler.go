@@ -23,28 +23,36 @@ type TaskDeleter interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
-type Scheduler struct {
-	cron     *cron.Cron
-	loader   TaskLoader
-	deleter  TaskDeleter
-	executor *executor.Executor
-	mu       sync.Mutex
-	wg       sync.WaitGroup
-	timers   map[uuid.UUID]*time.Timer
-	ctx      context.Context
-	cancel   context.CancelFunc
+// ExecutionChecker checks execution history (used by heartbeat).
+type ExecutionChecker interface {
+	GetLatestByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) (*domain.TaskExecution, error)
+	MarkStaleExecutionsFailed(ctx context.Context, staleBefore time.Time) (int, error)
 }
 
-func New(loader TaskLoader, deleter TaskDeleter, exec *executor.Executor) *Scheduler {
+type Scheduler struct {
+	cron      *cron.Cron
+	loader    TaskLoader
+	deleter   TaskDeleter
+	execCheck ExecutionChecker
+	executor  *executor.Executor
+	mu        sync.Mutex
+	wg        sync.WaitGroup
+	timers    map[uuid.UUID]*time.Timer
+	ctx       context.Context
+	cancel    context.CancelFunc
+}
+
+func New(loader TaskLoader, deleter TaskDeleter, execCheck ExecutionChecker, exec *executor.Executor) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		cron:     cron.New(),
-		loader:   loader,
-		deleter:  deleter,
-		executor: exec,
-		timers:   make(map[uuid.UUID]*time.Timer),
-		ctx:      ctx,
-		cancel:   cancel,
+		cron:      cron.New(),
+		loader:    loader,
+		deleter:   deleter,
+		execCheck: execCheck,
+		executor:  exec,
+		timers:    make(map[uuid.UUID]*time.Timer),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 }
 
@@ -57,6 +65,7 @@ func (s *Scheduler) Start() error {
 		return err
 	}
 	s.cron.Start()
+	go s.heartbeatLoop()
 	slog.Info("scheduler started")
 	return nil
 }
@@ -211,4 +220,114 @@ func (s *Scheduler) loadScheduledTasks() error {
 	}
 
 	return nil
+}
+
+const (
+	heartbeatInterval  = 10 * time.Minute
+	staleExecutionAge  = 2 * time.Hour
+	missedCronLookback = 24 * time.Hour
+)
+
+// heartbeatLoop runs every 10 minutes to recover missed cron jobs and mark stale executions.
+func (s *Scheduler) heartbeatLoop() {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.runHeartbeat()
+		}
+	}
+}
+
+func (s *Scheduler) runHeartbeat() {
+	slog.Info("heartbeat: checking for missed cron jobs and stale executions")
+
+	// Mark stale running executions as failed
+	if s.execCheck != nil {
+		staleBefore := time.Now().Add(-staleExecutionAge)
+		count, err := s.execCheck.MarkStaleExecutionsFailed(s.ctx, staleBefore)
+		if err != nil {
+			slog.Error("heartbeat: failed to mark stale executions", "error", err)
+		} else if count > 0 {
+			slog.Warn("heartbeat: marked stale executions as failed", "count", count)
+		}
+	}
+
+	// Check for missed cron jobs
+	tasks, err := s.loader.ListEnabled(s.ctx)
+	if err != nil {
+		slog.Error("heartbeat: failed to load enabled tasks", "error", err)
+		return
+	}
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	now := time.Now()
+
+	for _, task := range tasks {
+		task := task
+		if task.CronExpression == nil {
+			continue
+		}
+
+		sched, err := parser.Parse(*task.CronExpression)
+		if err != nil {
+			continue
+		}
+
+		prevFire := prevFireTime(sched, now, missedCronLookback)
+		if prevFire.IsZero() {
+			continue
+		}
+
+		// Check if there's an execution at or after the previous expected fire time
+		if s.execCheck != nil {
+			latest, err := s.execCheck.GetLatestByAgentTaskID(s.ctx, task.ID)
+			if err != nil {
+				// No executions — task was missed
+				slog.Warn("heartbeat: missed cron job detected (no executions), triggering",
+					"task_id", task.ID,
+					"task_name", task.Name,
+					"expected_at", prevFire,
+				)
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
+					s.executor.Run(s.ctx, task, nil)
+				}()
+				continue
+			}
+
+			if latest.CreatedAt.Before(prevFire) {
+				slog.Warn("heartbeat: missed cron job detected, triggering",
+					"task_id", task.ID,
+					"task_name", task.Name,
+					"expected_at", prevFire,
+					"last_execution_at", latest.CreatedAt,
+				)
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
+					s.executor.Run(s.ctx, task, nil)
+				}()
+			}
+		}
+	}
+}
+
+// prevFireTime computes the most recent time the cron should have fired before now.
+func prevFireTime(sched cron.Schedule, now time.Time, lookback time.Duration) time.Time {
+	t := now.Add(-lookback)
+	var prev time.Time
+	for {
+		next := sched.Next(t)
+		if next.After(now) {
+			return prev
+		}
+		prev = next
+		t = next
+	}
 }
