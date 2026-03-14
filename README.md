@@ -1,5 +1,13 @@
 # OpenMaguro🐟
 
+```
+▛▌▛▌█▌▛▌▄▖▛▛▌▀▌▛▌▌▌▛▘▛▌
+▙▌▙▌▙▖▌▌  ▌▌▌█▌▙▌▙▌▌ ▙▌
+  ▌            ▄▌      
+
+OpenMaguro🐟 v0.1 — swim upstream, think downstream.
+```
+
 Scheduled Claude Code SDK agent task orchestrator. Define agent tasks with cron schedules and track their execution history via a REST API. Includes a React dashboard for managing agents, skills, kanban tasks, and teams.
 
 ## Quick Start
@@ -11,14 +19,24 @@ docker compose up -d
 # Copy env and adjust if needed
 cp .env.example .env
 
-# Start the API server (runs migrations automatically)
-go run cmd/api/main.go
-
-# Start the dashboard (in a separate terminal)
-cd maguro-dashboard && npm install && npm run dev
+# Build and run (API + dashboard on single port)
+make build
+./maguro
 ```
 
-The API runs on `http://localhost:8080`. The dashboard dev server proxies to it.
+Open `http://localhost:8080` — the dashboard and API are served from the same port.
+
+### Development Mode
+
+```bash
+# Terminal 1: API server
+make dev
+
+# Terminal 2: Frontend with hot reload (proxies API to :8080)
+make dev-frontend
+```
+
+The Vite dev server runs on `:5173` and proxies `/api` requests to the Go backend on `:8080`.
 
 ## Environment Variables
 

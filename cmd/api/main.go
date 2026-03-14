@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"encoding/hex"
+	"fmt"
+	"io/fs"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-playground/validator/v10"
@@ -35,7 +37,14 @@ import (
 	"open-maguro/internal/skill"
 	"open-maguro/internal/task_execution"
 	"open-maguro/internal/team"
+	dashboard "open-maguro/maguro-dashboard"
 )
+
+const banner = `
+▛▌▛▌█▌▛▌▄▖▛▛▌▀▌▛▌▌▌▛▘▛▌
+▙▌▙▌▙▖▌▌  ▌▌▌█▌▙▌▙▌▌ ▙▌
+  ▌            ▄▌      
+`
 
 func main() {
 	_ = godotenv.Load() // optional: loads .env if present
@@ -147,7 +156,16 @@ func main() {
 		kanban.WithOnTaskCreated(kanbanExec.Enqueue),
 	)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler)
+	// Serve embedded dashboard
+	staticFS, err := fs.Sub(dashboard.Static, "dist")
+	if err != nil {
+		slog.Error("failed to load embedded dashboard", "error", err)
+		os.Exit(1)
+	}
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler,
+		router.WithStaticFS(staticFS),
+	)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -175,7 +193,10 @@ func main() {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	slog.Info("server starting", "port", cfg.Port)
+	fmt.Print(banner)
+	fmt.Println("OpenMaguro🐟 v0.1 — swim upstream, think downstream.")
+	fmt.Printf("🎏Dashboard: http://localhost:%s\n\n", cfg.Port)
+
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "error", err)
 		os.Exit(1)

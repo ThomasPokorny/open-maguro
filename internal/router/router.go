@@ -2,7 +2,9 @@ package router
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,7 +18,29 @@ import (
 	"open-maguro/internal/team"
 )
 
-func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler, kanbanHandler *kanban.Handler, teamHandler *team.Handler) chi.Router {
+// Option configures the router.
+type Option func(chi.Router)
+
+// WithStaticFS serves an embedded filesystem as the SPA frontend.
+func WithStaticFS(staticFS fs.FS) Option {
+	return func(r chi.Router) {
+		fileServer := http.FileServer(http.FS(staticFS))
+		indexHTML, _ := fs.ReadFile(staticFS, "index.html")
+		r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			// Serve actual files (JS, CSS, images) directly
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			if path != "" && strings.Contains(path, ".") {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			// SPA fallback: serve index.html content directly
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(indexHTML)
+		})
+	}
+}
+
+func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler, kanbanHandler *kanban.Handler, teamHandler *team.Handler, opts ...Option) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(cors.Handler(cors.Options{
@@ -44,6 +68,10 @@ func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.H
 		kanbanHandler.RegisterRoutes(r)
 		teamHandler.RegisterRoutes(r)
 	})
+
+	for _, opt := range opts {
+		opt(r)
+	}
 
 	return r
 }
