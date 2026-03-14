@@ -7,33 +7,33 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"database/sql"
 )
 
 const createAgentTask = `-- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id, task_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'cron')
+INSERT INTO agent_tasks (id, name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id, task_type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cron')
 RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id
 `
 
 type CreateAgentTaskParams struct {
-	Name              string      `json:"name"`
-	CronExpression    pgtype.Text `json:"cron_expression"`
-	Prompt            string      `json:"prompt"`
-	Enabled           bool        `json:"enabled"`
-	McpConfig         pgtype.Text `json:"mcp_config"`
-	AllowedTools      pgtype.Text `json:"allowed_tools"`
-	SystemAgent       bool        `json:"system_agent"`
-	GlobalSkillAccess bool        `json:"global_skill_access"`
-	OnSuccessTaskID   pgtype.UUID `json:"on_success_task_id"`
-	OnFailureTaskID   pgtype.UUID `json:"on_failure_task_id"`
-	TeamID            pgtype.UUID `json:"team_id"`
+	ID                string         `json:"id"`
+	Name              string         `json:"name"`
+	CronExpression    sql.NullString `json:"cron_expression"`
+	Prompt            string         `json:"prompt"`
+	Enabled           bool           `json:"enabled"`
+	McpConfig         sql.NullString `json:"mcp_config"`
+	AllowedTools      sql.NullString `json:"allowed_tools"`
+	SystemAgent       bool           `json:"system_agent"`
+	GlobalSkillAccess bool           `json:"global_skill_access"`
+	OnSuccessTaskID   sql.NullString `json:"on_success_task_id"`
+	OnFailureTaskID   sql.NullString `json:"on_failure_task_id"`
+	TeamID            sql.NullString `json:"team_id"`
 }
 
 func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams) (AgentTask, error) {
-	row := q.db.QueryRow(ctx, createAgentTask,
+	row := q.db.QueryRowContext(ctx, createAgentTask,
+		arg.ID,
 		arg.Name,
 		arg.CronExpression,
 		arg.Prompt,
@@ -69,23 +69,25 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 }
 
 const createScheduledTask = `-- name: CreateScheduledTask :one
-INSERT INTO agent_tasks (name, prompt, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'one_time')
+INSERT INTO agent_tasks (id, name, prompt, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'one_time')
 RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id
 `
 
 type CreateScheduledTaskParams struct {
-	Name              string             `json:"name"`
-	Prompt            string             `json:"prompt"`
-	RunAt             pgtype.Timestamptz `json:"run_at"`
-	McpConfig         pgtype.Text        `json:"mcp_config"`
-	AllowedTools      pgtype.Text        `json:"allowed_tools"`
-	SystemAgent       bool               `json:"system_agent"`
-	GlobalSkillAccess bool               `json:"global_skill_access"`
+	ID                string         `json:"id"`
+	Name              string         `json:"name"`
+	Prompt            string         `json:"prompt"`
+	RunAt             sql.NullTime   `json:"run_at"`
+	McpConfig         sql.NullString `json:"mcp_config"`
+	AllowedTools      sql.NullString `json:"allowed_tools"`
+	SystemAgent       bool           `json:"system_agent"`
+	GlobalSkillAccess bool           `json:"global_skill_access"`
 }
 
 func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTaskParams) (AgentTask, error) {
-	row := q.db.QueryRow(ctx, createScheduledTask,
+	row := q.db.QueryRowContext(ctx, createScheduledTask,
+		arg.ID,
 		arg.Name,
 		arg.Prompt,
 		arg.RunAt,
@@ -117,20 +119,20 @@ func (q *Queries) CreateScheduledTask(ctx context.Context, arg CreateScheduledTa
 }
 
 const deleteAgentTask = `-- name: DeleteAgentTask :exec
-DELETE FROM agent_tasks WHERE id = $1
+DELETE FROM agent_tasks WHERE id = ?
 `
 
-func (q *Queries) DeleteAgentTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteAgentTask, id)
+func (q *Queries) DeleteAgentTask(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteAgentTask, id)
 	return err
 }
 
 const getAgentTask = `-- name: GetAgentTask :one
-SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id FROM agent_tasks WHERE id = $1
+SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id FROM agent_tasks WHERE id = ?
 `
 
-func (q *Queries) GetAgentTask(ctx context.Context, id uuid.UUID) (AgentTask, error) {
-	row := q.db.QueryRow(ctx, getAgentTask, id)
+func (q *Queries) GetAgentTask(ctx context.Context, id string) (AgentTask, error) {
+	row := q.db.QueryRowContext(ctx, getAgentTask, id)
 	var i AgentTask
 	err := row.Scan(
 		&i.ID,
@@ -158,7 +160,7 @@ SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_
 `
 
 func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listAgentTasks)
+	rows, err := q.db.QueryContext(ctx, listAgentTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +189,9 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -196,12 +201,12 @@ func (q *Queries) ListAgentTasks(ctx context.Context) ([]AgentTask, error) {
 
 const listAgentTasksByTeamID = `-- name: ListAgentTasksByTeamID :many
 SELECT id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id FROM agent_tasks
-WHERE team_id = $1
+WHERE team_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListAgentTasksByTeamID(ctx context.Context, teamID pgtype.UUID) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listAgentTasksByTeamID, teamID)
+func (q *Queries) ListAgentTasksByTeamID(ctx context.Context, teamID sql.NullString) ([]AgentTask, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentTasksByTeamID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +235,9 @@ func (q *Queries) ListAgentTasksByTeamID(ctx context.Context, teamID pgtype.UUID
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -244,7 +252,7 @@ ORDER BY created_at DESC
 `
 
 func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listEnabledCronTasks)
+	rows, err := q.db.QueryContext(ctx, listEnabledCronTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +281,9 @@ func (q *Queries) ListEnabledCronTasks(ctx context.Context) ([]AgentTask, error)
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -287,7 +298,7 @@ ORDER BY run_at ASC
 `
 
 func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listPendingScheduledTasks)
+	rows, err := q.db.QueryContext(ctx, listPendingScheduledTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -316,6 +327,9 @@ func (q *Queries) ListPendingScheduledTasks(ctx context.Context) ([]AgentTask, e
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -330,7 +344,7 @@ ORDER BY created_at DESC
 `
 
 func (q *Queries) ListSystemAgentTasks(ctx context.Context) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listSystemAgentTasks)
+	rows, err := q.db.QueryContext(ctx, listSystemAgentTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +373,9 @@ func (q *Queries) ListSystemAgentTasks(ctx context.Context) ([]AgentTask, error)
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -373,7 +390,7 @@ ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUserAgentTasks(ctx context.Context) ([]AgentTask, error) {
-	rows, err := q.db.Query(ctx, listUserAgentTasks)
+	rows, err := q.db.QueryContext(ctx, listUserAgentTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -403,6 +420,9 @@ func (q *Queries) ListUserAgentTasks(ctx context.Context) ([]AgentTask, error) {
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -411,40 +431,39 @@ func (q *Queries) ListUserAgentTasks(ctx context.Context) ([]AgentTask, error) {
 
 const updateAgentTask = `-- name: UpdateAgentTask :one
 UPDATE agent_tasks
-SET name = $2,
-    cron_expression = $3,
-    prompt = $4,
-    enabled = $5,
-    mcp_config = $6,
-    allowed_tools = $7,
-    system_agent = $8,
-    global_skill_access = $9,
-    on_success_task_id = $10,
-    on_failure_task_id = $11,
-    team_id = $12,
-    updated_at = now()
-WHERE id = $1
+SET name = ?,
+    cron_expression = ?,
+    prompt = ?,
+    enabled = ?,
+    mcp_config = ?,
+    allowed_tools = ?,
+    system_agent = ?,
+    global_skill_access = ?,
+    on_success_task_id = ?,
+    on_failure_task_id = ?,
+    team_id = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING id, name, cron_expression, prompt, enabled, created_at, updated_at, task_type, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id
 `
 
 type UpdateAgentTaskParams struct {
-	ID                uuid.UUID   `json:"id"`
-	Name              string      `json:"name"`
-	CronExpression    pgtype.Text `json:"cron_expression"`
-	Prompt            string      `json:"prompt"`
-	Enabled           bool        `json:"enabled"`
-	McpConfig         pgtype.Text `json:"mcp_config"`
-	AllowedTools      pgtype.Text `json:"allowed_tools"`
-	SystemAgent       bool        `json:"system_agent"`
-	GlobalSkillAccess bool        `json:"global_skill_access"`
-	OnSuccessTaskID   pgtype.UUID `json:"on_success_task_id"`
-	OnFailureTaskID   pgtype.UUID `json:"on_failure_task_id"`
-	TeamID            pgtype.UUID `json:"team_id"`
+	Name              string         `json:"name"`
+	CronExpression    sql.NullString `json:"cron_expression"`
+	Prompt            string         `json:"prompt"`
+	Enabled           bool           `json:"enabled"`
+	McpConfig         sql.NullString `json:"mcp_config"`
+	AllowedTools      sql.NullString `json:"allowed_tools"`
+	SystemAgent       bool           `json:"system_agent"`
+	GlobalSkillAccess bool           `json:"global_skill_access"`
+	OnSuccessTaskID   sql.NullString `json:"on_success_task_id"`
+	OnFailureTaskID   sql.NullString `json:"on_failure_task_id"`
+	TeamID            sql.NullString `json:"team_id"`
+	ID                string         `json:"id"`
 }
 
 func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams) (AgentTask, error) {
-	row := q.db.QueryRow(ctx, updateAgentTask,
-		arg.ID,
+	row := q.db.QueryRowContext(ctx, updateAgentTask,
 		arg.Name,
 		arg.CronExpression,
 		arg.Prompt,
@@ -456,6 +475,7 @@ func (q *Queries) UpdateAgentTask(ctx context.Context, arg UpdateAgentTaskParams
 		arg.OnSuccessTaskID,
 		arg.OnFailureTaskID,
 		arg.TeamID,
+		arg.ID,
 	)
 	var i AgentTask
 	err := row.Scan(

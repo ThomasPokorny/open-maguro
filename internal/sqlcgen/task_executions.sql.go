@@ -7,26 +7,27 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"database/sql"
+	"time"
 )
 
 const createTaskExecution = `-- name: CreateTaskExecution :one
-INSERT INTO task_executions (agent_task_id, status, task_name, triggered_by_execution_id)
-VALUES ($1, $2, $3, $4)
+INSERT INTO task_executions (id, agent_task_id, status, task_name, triggered_by_execution_id)
+VALUES (?, ?, ?, ?, ?)
 RETURNING id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id
 `
 
 type CreateTaskExecutionParams struct {
-	AgentTaskID            pgtype.UUID     `json:"agent_task_id"`
-	Status                 ExecutionStatus `json:"status"`
-	TaskName               pgtype.Text     `json:"task_name"`
-	TriggeredByExecutionID pgtype.UUID     `json:"triggered_by_execution_id"`
+	ID                     string         `json:"id"`
+	AgentTaskID            sql.NullString `json:"agent_task_id"`
+	Status                 string         `json:"status"`
+	TaskName               sql.NullString `json:"task_name"`
+	TriggeredByExecutionID sql.NullString `json:"triggered_by_execution_id"`
 }
 
 func (q *Queries) CreateTaskExecution(ctx context.Context, arg CreateTaskExecutionParams) (TaskExecution, error) {
-	row := q.db.QueryRow(ctx, createTaskExecution,
+	row := q.db.QueryRowContext(ctx, createTaskExecution,
+		arg.ID,
 		arg.AgentTaskID,
 		arg.Status,
 		arg.TaskName,
@@ -50,26 +51,26 @@ func (q *Queries) CreateTaskExecution(ctx context.Context, arg CreateTaskExecuti
 
 const deleteExecutionsOlderThan = `-- name: DeleteExecutionsOlderThan :execrows
 DELETE FROM task_executions
-WHERE created_at < $1
+WHERE created_at < ?
 `
 
-func (q *Queries) DeleteExecutionsOlderThan(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteExecutionsOlderThan, createdAt)
+func (q *Queries) DeleteExecutionsOlderThan(ctx context.Context, createdAt time.Time) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExecutionsOlderThan, createdAt)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected(), nil
+	return result.RowsAffected()
 }
 
 const getLatestExecutionByAgentTaskID = `-- name: GetLatestExecutionByAgentTaskID :one
 SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
-WHERE agent_task_id = $1
+WHERE agent_task_id = ?
 ORDER BY created_at DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestExecutionByAgentTaskID(ctx context.Context, agentTaskID pgtype.UUID) (TaskExecution, error) {
-	row := q.db.QueryRow(ctx, getLatestExecutionByAgentTaskID, agentTaskID)
+func (q *Queries) GetLatestExecutionByAgentTaskID(ctx context.Context, agentTaskID sql.NullString) (TaskExecution, error) {
+	row := q.db.QueryRowContext(ctx, getLatestExecutionByAgentTaskID, agentTaskID)
 	var i TaskExecution
 	err := row.Scan(
 		&i.ID,
@@ -87,11 +88,11 @@ func (q *Queries) GetLatestExecutionByAgentTaskID(ctx context.Context, agentTask
 }
 
 const getTaskExecution = `-- name: GetTaskExecution :one
-SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions WHERE id = $1
+SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions WHERE id = ?
 `
 
-func (q *Queries) GetTaskExecution(ctx context.Context, id uuid.UUID) (TaskExecution, error) {
-	row := q.db.QueryRow(ctx, getTaskExecution, id)
+func (q *Queries) GetTaskExecution(ctx context.Context, id string) (TaskExecution, error) {
+	row := q.db.QueryRowContext(ctx, getTaskExecution, id)
 	var i TaskExecution
 	err := row.Scan(
 		&i.ID,
@@ -111,11 +112,11 @@ func (q *Queries) GetTaskExecution(ctx context.Context, id uuid.UUID) (TaskExecu
 const listStaleRunningExecutions = `-- name: ListStaleRunningExecutions :many
 SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
 WHERE status = 'running'
-AND started_at < $1
+AND started_at < ?
 `
 
-func (q *Queries) ListStaleRunningExecutions(ctx context.Context, startedAt pgtype.Timestamptz) ([]TaskExecution, error) {
-	rows, err := q.db.Query(ctx, listStaleRunningExecutions, startedAt)
+func (q *Queries) ListStaleRunningExecutions(ctx context.Context, startedAt sql.NullTime) ([]TaskExecution, error) {
+	rows, err := q.db.QueryContext(ctx, listStaleRunningExecutions, startedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +139,9 @@ func (q *Queries) ListStaleRunningExecutions(ctx context.Context, startedAt pgty
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -151,7 +155,7 @@ ORDER BY created_at DESC
 `
 
 func (q *Queries) ListTaskExecutions(ctx context.Context) ([]TaskExecution, error) {
-	rows, err := q.db.Query(ctx, listTaskExecutions)
+	rows, err := q.db.QueryContext(ctx, listTaskExecutions)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +178,9 @@ func (q *Queries) ListTaskExecutions(ctx context.Context) ([]TaskExecution, erro
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -183,12 +190,12 @@ func (q *Queries) ListTaskExecutions(ctx context.Context) ([]TaskExecution, erro
 
 const listTaskExecutionsByAgentTaskID = `-- name: ListTaskExecutionsByAgentTaskID :many
 SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
-WHERE agent_task_id = $1
+WHERE agent_task_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListTaskExecutionsByAgentTaskID(ctx context.Context, agentTaskID pgtype.UUID) ([]TaskExecution, error) {
-	rows, err := q.db.Query(ctx, listTaskExecutionsByAgentTaskID, agentTaskID)
+func (q *Queries) ListTaskExecutionsByAgentTaskID(ctx context.Context, agentTaskID sql.NullString) ([]TaskExecution, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskExecutionsByAgentTaskID, agentTaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +219,9 @@ func (q *Queries) ListTaskExecutionsByAgentTaskID(ctx context.Context, agentTask
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -220,32 +230,32 @@ func (q *Queries) ListTaskExecutionsByAgentTaskID(ctx context.Context, agentTask
 
 const updateTaskExecutionStatus = `-- name: UpdateTaskExecutionStatus :one
 UPDATE task_executions
-SET status = $2,
-    started_at = $3,
-    finished_at = $4,
-    summary = $5,
-    error = $6
-WHERE id = $1
+SET status = ?,
+    started_at = ?,
+    finished_at = ?,
+    summary = ?,
+    error = ?
+WHERE id = ?
 RETURNING id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id
 `
 
 type UpdateTaskExecutionStatusParams struct {
-	ID         uuid.UUID          `json:"id"`
-	Status     ExecutionStatus    `json:"status"`
-	StartedAt  pgtype.Timestamptz `json:"started_at"`
-	FinishedAt pgtype.Timestamptz `json:"finished_at"`
-	Summary    pgtype.Text        `json:"summary"`
-	Error      pgtype.Text        `json:"error"`
+	Status     string         `json:"status"`
+	StartedAt  sql.NullTime   `json:"started_at"`
+	FinishedAt sql.NullTime   `json:"finished_at"`
+	Summary    sql.NullString `json:"summary"`
+	Error      sql.NullString `json:"error"`
+	ID         string         `json:"id"`
 }
 
 func (q *Queries) UpdateTaskExecutionStatus(ctx context.Context, arg UpdateTaskExecutionStatusParams) (TaskExecution, error) {
-	row := q.db.QueryRow(ctx, updateTaskExecutionStatus,
-		arg.ID,
+	row := q.db.QueryRowContext(ctx, updateTaskExecutionStatus,
 		arg.Status,
 		arg.StartedAt,
 		arg.FinishedAt,
 		arg.Summary,
 		arg.Error,
+		arg.ID,
 	)
 	var i TaskExecution
 	err := row.Scan(

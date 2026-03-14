@@ -7,24 +7,28 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/google/uuid"
 )
 
 const createTeam = `-- name: CreateTeam :one
-INSERT INTO teams (title, description, color)
-VALUES ($1, $2, $3)
+INSERT INTO teams (id, title, description, color)
+VALUES (?, ?, ?, ?)
 RETURNING id, title, description, color, created_at, updated_at
 `
 
 type CreateTeamParams struct {
+	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Color       string `json:"color"`
 }
 
 func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, error) {
-	row := q.db.QueryRow(ctx, createTeam, arg.Title, arg.Description, arg.Color)
+	row := q.db.QueryRowContext(ctx, createTeam,
+		arg.ID,
+		arg.Title,
+		arg.Description,
+		arg.Color,
+	)
 	var i Team
 	err := row.Scan(
 		&i.ID,
@@ -38,20 +42,20 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, e
 }
 
 const deleteTeam = `-- name: DeleteTeam :exec
-DELETE FROM teams WHERE id = $1
+DELETE FROM teams WHERE id = ?
 `
 
-func (q *Queries) DeleteTeam(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTeam, id)
+func (q *Queries) DeleteTeam(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteTeam, id)
 	return err
 }
 
 const getTeam = `-- name: GetTeam :one
-SELECT id, title, description, color, created_at, updated_at FROM teams WHERE id = $1
+SELECT id, title, description, color, created_at, updated_at FROM teams WHERE id = ?
 `
 
-func (q *Queries) GetTeam(ctx context.Context, id uuid.UUID) (Team, error) {
-	row := q.db.QueryRow(ctx, getTeam, id)
+func (q *Queries) GetTeam(ctx context.Context, id string) (Team, error) {
+	row := q.db.QueryRowContext(ctx, getTeam, id)
 	var i Team
 	err := row.Scan(
 		&i.ID,
@@ -69,7 +73,7 @@ SELECT id, title, description, color, created_at, updated_at FROM teams ORDER BY
 `
 
 func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
-	rows, err := q.db.Query(ctx, listTeams)
+	rows, err := q.db.QueryContext(ctx, listTeams)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +93,9 @@ func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -97,27 +104,27 @@ func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 
 const updateTeam = `-- name: UpdateTeam :one
 UPDATE teams
-SET title = $2,
-    description = $3,
-    color = $4,
-    updated_at = now()
-WHERE id = $1
+SET title = ?,
+    description = ?,
+    color = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING id, title, description, color, created_at, updated_at
 `
 
 type UpdateTeamParams struct {
-	ID          uuid.UUID `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Color       string    `json:"color"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Color       string `json:"color"`
+	ID          string `json:"id"`
 }
 
 func (q *Queries) UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error) {
-	row := q.db.QueryRow(ctx, updateTeam,
-		arg.ID,
+	row := q.db.QueryRowContext(ctx, updateTeam,
 		arg.Title,
 		arg.Description,
 		arg.Color,
+		arg.ID,
 	)
 	var i Team
 	err := row.Scan(

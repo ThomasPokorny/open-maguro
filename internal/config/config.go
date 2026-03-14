@@ -2,7 +2,7 @@ package config
 
 type Config struct {
 	Port                   string   `env:"PORT"                      envDefault:"8080"`
-	DatabaseURL            string   `env:"DATABASE_URL,required"`
+	DatabaseURL            string   `env:"DATABASE_URL"              envDefault:"~/.maguro/maguro.db"`
 	LogLevel               string   `env:"LOG_LEVEL"                 envDefault:"info"`
 	MCPConfigPath          string   `env:"MCP_CONFIG_PATH"`
 	AllowedTools           []string `env:"ALLOWED_TOOLS"             envSeparator:"," envDefault:"Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*"`

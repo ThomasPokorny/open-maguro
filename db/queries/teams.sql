@@ -1,22 +1,22 @@
 -- name: GetTeam :one
-SELECT * FROM teams WHERE id = $1;
+SELECT * FROM teams WHERE id = ?;
 
 -- name: ListTeams :many
 SELECT * FROM teams ORDER BY created_at DESC;
 
 -- name: CreateTeam :one
-INSERT INTO teams (title, description, color)
-VALUES ($1, $2, $3)
+INSERT INTO teams (id, title, description, color)
+VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateTeam :one
 UPDATE teams
-SET title = $2,
-    description = $3,
-    color = $4,
-    updated_at = now()
-WHERE id = $1
+SET title = ?,
+    description = ?,
+    color = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING *;
 
 -- name: DeleteTeam :exec
-DELETE FROM teams WHERE id = $1;
+DELETE FROM teams WHERE id = ?;

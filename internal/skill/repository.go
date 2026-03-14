@@ -2,29 +2,27 @@ package skill
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"open-maguro/internal/crypto"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/sqlcgen"
 )
 
 type PostgresRepository struct {
-	pool      *pgxpool.Pool
+	db        *sql.DB
 	queries   *sqlcgen.Queries
 	secretKey []byte
 }
 
-func NewPostgresRepository(pool *pgxpool.Pool, secretKey []byte) *PostgresRepository {
+func NewPostgresRepository(db *sql.DB, secretKey []byte) *PostgresRepository {
 	return &PostgresRepository{
-		pool:      pool,
-		queries:   sqlcgen.New(pool),
+		db:        db,
+		queries:   sqlcgen.New(db),
 		secretKey: secretKey,
 	}
 }
@@ -35,6 +33,7 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		return nil, fmt.Errorf("create skill: %w", err)
 	}
 	row, err := r.queries.CreateSkill(ctx, sqlcgen.CreateSkillParams{
+		ID:                 uuid.New().String(),
 		Title:              params.Title,
 		Content:            params.Content,
 		EnvironmentSecrets: encSecrets,
@@ -46,9 +45,9 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 }
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Skill, error) {
-	row, err := r.queries.GetSkill(ctx, id)
+	row, err := r.queries.GetSkill(ctx, id.String())
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("skill not found: %s", id)
 		}
 		return nil, fmt.Errorf("get skill: %w", err)
@@ -82,13 +81,13 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		return nil, fmt.Errorf("update skill: %w", err)
 	}
 	row, err := r.queries.UpdateSkill(ctx, sqlcgen.UpdateSkillParams{
-		ID:                 id,
+		ID:                 id.String(),
 		Title:              *params.Title,
 		Content:            *params.Content,
 		EnvironmentSecrets: encSecrets,
 	})
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("skill not found: %s", id)
 		}
 		return nil, fmt.Errorf("update skill: %w", err)
@@ -97,7 +96,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 }
 
 func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	err := r.queries.DeleteSkill(ctx, id)
+	err := r.queries.DeleteSkill(ctx, id.String())
 	if err != nil {
 		return fmt.Errorf("delete skill: %w", err)
 	}
@@ -106,20 +105,20 @@ func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (r *PostgresRepository) AddAgentSkill(ctx context.Context, agentTaskID, skillID uuid.UUID) error {
 	return r.queries.AddAgentSkill(ctx, sqlcgen.AddAgentSkillParams{
-		AgentTaskID: agentTaskID,
-		SkillID:     skillID,
+		AgentTaskID: agentTaskID.String(),
+		SkillID:     skillID.String(),
 	})
 }
 
 func (r *PostgresRepository) RemoveAgentSkill(ctx context.Context, agentTaskID, skillID uuid.UUID) error {
 	return r.queries.RemoveAgentSkill(ctx, sqlcgen.RemoveAgentSkillParams{
-		AgentTaskID: agentTaskID,
-		SkillID:     skillID,
+		AgentTaskID: agentTaskID.String(),
+		SkillID:     skillID.String(),
 	})
 }
 
 func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) ([]domain.Skill, error) {
-	rows, err := r.queries.ListSkillsByAgentTaskID(ctx, agentTaskID)
+	rows, err := r.queries.ListSkillsByAgentTaskID(ctx, agentTaskID.String())
 	if err != nil {
 		return nil, fmt.Errorf("list skills by agent task: %w", err)
 	}
@@ -134,23 +133,23 @@ func (r *PostgresRepository) ListByAgentTaskID(ctx context.Context, agentTaskID 
 	return skills, nil
 }
 
-func (r *PostgresRepository) encryptSecrets(secrets map[string]string) (pgtype.Text, error) {
+func (r *PostgresRepository) encryptSecrets(secrets map[string]string) (sql.NullString, error) {
 	if len(secrets) == 0 {
-		return pgtype.Text{}, nil
+		return sql.NullString{}, nil
 	}
 	jsonBytes, err := json.Marshal(secrets)
 	if err != nil {
-		return pgtype.Text{}, fmt.Errorf("marshal secrets: %w", err)
+		return sql.NullString{}, fmt.Errorf("marshal secrets: %w", err)
 	}
 	encrypted, err := crypto.Encrypt(jsonBytes, r.secretKey)
 	if err != nil {
-		return pgtype.Text{}, fmt.Errorf("encrypt secrets: %w", err)
+		return sql.NullString{}, fmt.Errorf("encrypt secrets: %w", err)
 	}
 	encoded := base64.StdEncoding.EncodeToString(encrypted)
-	return pgtype.Text{String: encoded, Valid: true}, nil
+	return sql.NullString{String: encoded, Valid: true}, nil
 }
 
-func (r *PostgresRepository) decryptSecrets(encrypted pgtype.Text) (map[string]string, error) {
+func (r *PostgresRepository) decryptSecrets(encrypted sql.NullString) (map[string]string, error) {
 	if !encrypted.Valid || encrypted.String == "" {
 		return nil, nil
 	}
@@ -175,11 +174,11 @@ func (r *PostgresRepository) toDomain(row sqlcgen.Skill) (*domain.Skill, error) 
 		return nil, err
 	}
 	return &domain.Skill{
-		ID:                 row.ID,
+		ID:                 uuid.MustParse(row.ID),
 		Title:              row.Title,
 		Content:            row.Content,
 		EnvironmentSecrets: secrets,
-		CreatedAt:          row.CreatedAt.Time,
-		UpdatedAt:          row.UpdatedAt.Time,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
 	}, nil
 }

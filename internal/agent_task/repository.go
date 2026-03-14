@@ -2,26 +2,24 @@ package agent_task
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/sqlcgen"
 )
 
 type PostgresRepository struct {
-	pool    *pgxpool.Pool
+	db      *sql.DB
 	queries *sqlcgen.Queries
 }
 
-func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
+func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{
-		pool:    pool,
-		queries: sqlcgen.New(pool),
+		db:      db,
+		queries: sqlcgen.New(db),
 	}
 }
 
@@ -29,16 +27,6 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 	enabled := true
 	if params.Enabled != nil {
 		enabled = *params.Enabled
-	}
-
-	mcpConfig := pgtype.Text{}
-	if params.MCPConfig != nil {
-		mcpConfig = pgtype.Text{String: *params.MCPConfig, Valid: true}
-	}
-
-	allowedTools := pgtype.Text{}
-	if params.AllowedTools != nil {
-		allowedTools = pgtype.Text{String: *params.AllowedTools, Valid: true}
 	}
 
 	systemAgent := false
@@ -51,37 +39,19 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		globalSkillAccess = *params.GlobalSkillAccess
 	}
 
-	onSuccessTaskID := pgtype.UUID{}
-	if params.OnSuccessTaskID != nil {
-		onSuccessTaskID = pgtype.UUID{Bytes: *params.OnSuccessTaskID, Valid: true}
-	}
-	onFailureTaskID := pgtype.UUID{}
-	if params.OnFailureTaskID != nil {
-		onFailureTaskID = pgtype.UUID{Bytes: *params.OnFailureTaskID, Valid: true}
-	}
-
-	cronExpr := pgtype.Text{}
-	if params.CronExpression != nil {
-		cronExpr = pgtype.Text{String: *params.CronExpression, Valid: true}
-	}
-
-	teamID := pgtype.UUID{}
-	if params.TeamID != nil {
-		teamID = pgtype.UUID{Bytes: *params.TeamID, Valid: true}
-	}
-
 	row, err := r.queries.CreateAgentTask(ctx, sqlcgen.CreateAgentTaskParams{
+		ID:                uuid.New().String(),
 		Name:              params.Name,
-		CronExpression:    cronExpr,
+		CronExpression:    ptrToNullString(params.CronExpression),
 		Prompt:            params.Prompt,
 		Enabled:           enabled,
-		McpConfig:         mcpConfig,
-		AllowedTools:      allowedTools,
+		McpConfig:         ptrToNullString(params.MCPConfig),
+		AllowedTools:      ptrToNullString(params.AllowedTools),
 		SystemAgent:       systemAgent,
 		GlobalSkillAccess: globalSkillAccess,
-		OnSuccessTaskID:   onSuccessTaskID,
-		OnFailureTaskID:   onFailureTaskID,
-		TeamID:            teamID,
+		OnSuccessTaskID:   uuidPtrToNullString(params.OnSuccessTaskID),
+		OnFailureTaskID:   uuidPtrToNullString(params.OnFailureTaskID),
+		TeamID:            uuidPtrToNullString(params.TeamID),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent task: %w", err)
@@ -91,9 +61,9 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 }
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.AgentTask, error) {
-	row, err := r.queries.GetAgentTask(ctx, id)
+	row, err := r.queries.GetAgentTask(ctx, id.String())
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("agent task not found: %s", id)
 		}
 		return nil, fmt.Errorf("get agent task: %w", err)
@@ -115,60 +85,22 @@ func (r *PostgresRepository) List(ctx context.Context) ([]domain.AgentTask, erro
 }
 
 func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params UpdateRequest) (*domain.AgentTask, error) {
-	cronExpr := pgtype.Text{}
-	if params.CronExpression != nil {
-		cronExpr = pgtype.Text{String: *params.CronExpression, Valid: true}
-	}
-	mcpConfig := pgtype.Text{}
-	if params.MCPConfig != nil {
-		mcpConfig = pgtype.Text{String: *params.MCPConfig, Valid: true}
-	}
-
-	allowedTools := pgtype.Text{}
-	if params.AllowedTools != nil {
-		allowedTools = pgtype.Text{String: *params.AllowedTools, Valid: true}
-	}
-
-	systemAgent := false
-	if params.SystemAgent != nil {
-		systemAgent = *params.SystemAgent
-	}
-
-	globalSkillAccess := false
-	if params.GlobalSkillAccess != nil {
-		globalSkillAccess = *params.GlobalSkillAccess
-	}
-
-	onSuccessTaskID := pgtype.UUID{}
-	if params.OnSuccessTaskID != nil {
-		onSuccessTaskID = pgtype.UUID{Bytes: *params.OnSuccessTaskID, Valid: true}
-	}
-	onFailureTaskID := pgtype.UUID{}
-	if params.OnFailureTaskID != nil {
-		onFailureTaskID = pgtype.UUID{Bytes: *params.OnFailureTaskID, Valid: true}
-	}
-
-	teamID := pgtype.UUID{}
-	if params.TeamID != nil {
-		teamID = pgtype.UUID{Bytes: *params.TeamID, Valid: true}
-	}
-
 	row, err := r.queries.UpdateAgentTask(ctx, sqlcgen.UpdateAgentTaskParams{
-		ID:                id,
+		ID:                id.String(),
 		Name:              *params.Name,
-		CronExpression:    cronExpr,
+		CronExpression:    ptrToNullString(params.CronExpression),
 		Prompt:            *params.Prompt,
 		Enabled:           *params.Enabled,
-		McpConfig:         mcpConfig,
-		AllowedTools:      allowedTools,
-		SystemAgent:       systemAgent,
-		GlobalSkillAccess: globalSkillAccess,
-		OnSuccessTaskID:   onSuccessTaskID,
-		OnFailureTaskID:   onFailureTaskID,
-		TeamID:            teamID,
+		McpConfig:         ptrToNullString(params.MCPConfig),
+		AllowedTools:      ptrToNullString(params.AllowedTools),
+		SystemAgent:       boolPtrVal(params.SystemAgent),
+		GlobalSkillAccess: boolPtrVal(params.GlobalSkillAccess),
+		OnSuccessTaskID:   uuidPtrToNullString(params.OnSuccessTaskID),
+		OnFailureTaskID:   uuidPtrToNullString(params.OnFailureTaskID),
+		TeamID:            uuidPtrToNullString(params.TeamID),
 	})
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("agent task not found: %s", id)
 		}
 		return nil, fmt.Errorf("update agent task: %w", err)
@@ -177,7 +109,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 }
 
 func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	err := r.queries.DeleteAgentTask(ctx, id)
+	err := r.queries.DeleteAgentTask(ctx, id.String())
 	if err != nil {
 		return fmt.Errorf("delete agent task: %w", err)
 	}
@@ -185,7 +117,7 @@ func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *PostgresRepository) ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.AgentTask, error) {
-	rows, err := r.queries.ListAgentTasksByTeamID(ctx, pgtype.UUID{Bytes: teamID, Valid: true})
+	rows, err := r.queries.ListAgentTasksByTeamID(ctx, sql.NullString{String: teamID.String(), Valid: true})
 	if err != nil {
 		return nil, fmt.Errorf("list agent tasks by team: %w", err)
 	}
@@ -224,21 +156,13 @@ func (r *PostgresRepository) ListPendingScheduled(ctx context.Context) ([]domain
 }
 
 func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt string, runAt time.Time, mcpConfigVal *string, allowedToolsVal *string) (*domain.AgentTask, error) {
-	mcpConfig := pgtype.Text{}
-	if mcpConfigVal != nil {
-		mcpConfig = pgtype.Text{String: *mcpConfigVal, Valid: true}
-	}
-	allowedTools := pgtype.Text{}
-	if allowedToolsVal != nil {
-		allowedTools = pgtype.Text{String: *allowedToolsVal, Valid: true}
-	}
-
 	row, err := r.queries.CreateScheduledTask(ctx, sqlcgen.CreateScheduledTaskParams{
+		ID:                uuid.New().String(),
 		Name:              name,
 		Prompt:            prompt,
-		RunAt:             pgtype.Timestamptz{Time: runAt, Valid: true},
-		McpConfig:         mcpConfig,
-		AllowedTools:      allowedTools,
+		RunAt:             sql.NullTime{Time: runAt, Valid: true},
+		McpConfig:         ptrToNullString(mcpConfigVal),
+		AllowedTools:      ptrToNullString(allowedToolsVal),
 		SystemAgent:       false,
 		GlobalSkillAccess: false,
 	})
@@ -248,17 +172,38 @@ func (r *PostgresRepository) CreateScheduled(ctx context.Context, name, prompt s
 	return toDomain(row), nil
 }
 
+func ptrToNullString(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *s, Valid: true}
+}
+
+func uuidPtrToNullString(id *uuid.UUID) sql.NullString {
+	if id == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: id.String(), Valid: true}
+}
+
+func boolPtrVal(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
+}
+
 func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	task := &domain.AgentTask{
-		ID:                row.ID,
+		ID:                uuid.MustParse(row.ID),
 		Name:              row.Name,
 		TaskType:          row.TaskType,
 		Prompt:            row.Prompt,
 		Enabled:           row.Enabled,
 		SystemAgent:       row.SystemAgent,
 		GlobalSkillAccess: row.GlobalSkillAccess,
-		CreatedAt:         row.CreatedAt.Time,
-		UpdatedAt:         row.UpdatedAt.Time,
+		CreatedAt:         row.CreatedAt,
+		UpdatedAt:         row.UpdatedAt,
 	}
 	if row.CronExpression.Valid {
 		s := row.CronExpression.String
@@ -277,15 +222,15 @@ func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 		task.AllowedTools = &s
 	}
 	if row.OnSuccessTaskID.Valid {
-		id := uuid.UUID(row.OnSuccessTaskID.Bytes)
+		id := uuid.MustParse(row.OnSuccessTaskID.String)
 		task.OnSuccessTaskID = &id
 	}
 	if row.OnFailureTaskID.Valid {
-		id := uuid.UUID(row.OnFailureTaskID.Bytes)
+		id := uuid.MustParse(row.OnFailureTaskID.String)
 		task.OnFailureTaskID = &id
 	}
 	if row.TeamID.Valid {
-		id := uuid.UUID(row.TeamID.Bytes)
+		id := uuid.MustParse(row.TeamID.String)
 		task.TeamID = &id
 	}
 	return task

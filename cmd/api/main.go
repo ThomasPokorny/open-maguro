@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,15 +15,11 @@ import (
 	"syscall"
 	"time"
 
-	"encoding/hex"
-	"fmt"
-	"io/fs"
-
 	"github.com/caarlos0/env/v11"
 	"github.com/go-playground/validator/v10"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
+	_ "modernc.org/sqlite"
 
 	dbpkg "open-maguro/db"
 	"open-maguro/internal/agent_task"
@@ -43,7 +42,7 @@ import (
 const banner = `
 ▛▌▛▌█▌▛▌▄▖▛▛▌▀▌▛▌▌▌▛▘▛▌
 ▙▌▙▌▙▖▌▌  ▌▌▌█▌▙▌▙▌▌ ▙▌
-  ▌            ▄▌      
+  ▌            ▄▌
 `
 
 func main() {
@@ -55,21 +54,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Expand ~ in database path
+	dbPath := cfg.DatabaseURL
+	if strings.HasPrefix(dbPath, "~/") {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, dbPath[2:])
+	}
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		slog.Error("failed to create database directory", "error", err)
+		os.Exit(1)
+	}
 
 	// Run migrations
-	if err := runMigrations(cfg.DatabaseURL); err != nil {
+	if err := runMigrations(dbPath); err != nil {
 		slog.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
 
-	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
+	db, err := database.Open(dbPath)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	validate := validator.New()
 
@@ -107,9 +115,9 @@ func main() {
 	}
 
 	// Wire up repositories
-	agentTaskRepo := agent_task.NewPostgresRepository(pool)
-	taskExecRepo := task_execution.NewPostgresRepository(pool)
-	skillRepo := skill.NewPostgresRepository(pool, secretKey)
+	agentTaskRepo := agent_task.NewPostgresRepository(db)
+	taskExecRepo := task_execution.NewPostgresRepository(db)
+	skillRepo := skill.NewPostgresRepository(db, secretKey)
 
 	// Wire up executor and scheduler
 	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, cfg.MCPConfigPath, cfg.AllowedTools, workspaceRoot)
@@ -141,12 +149,12 @@ func main() {
 	skillHandler := skill.NewHandler(skillService, validate)
 
 	// Wire up teams
-	teamRepo := team.NewPostgresRepository(pool)
+	teamRepo := team.NewPostgresRepository(db)
 	teamService := team.NewService(teamRepo)
 	teamHandler := team.NewHandler(teamService, validate)
 
 	// Wire up kanban
-	kanbanRepo := kanban.NewPostgresRepository(pool)
+	kanbanRepo := kanban.NewPostgresRepository(db)
 	kanbanService := kanban.NewService(kanbanRepo)
 	kanbanExec := kanbanexec.New(kanbanRepo, agentTaskRepo, taskExecRepo, exec)
 	if err := kanbanExec.LoadPending(); err != nil {
@@ -203,16 +211,19 @@ func main() {
 	}
 }
 
-func runMigrations(databaseURL string) error {
+func runMigrations(dbPath string) error {
 	goose.SetBaseFS(dbpkg.Migrations)
 
-	db, err := sql.Open("pgx", databaseURL)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	if err := goose.SetDialect("postgres"); err != nil {
+	// Enable foreign keys for migration
+	db.Exec("PRAGMA foreign_keys=ON")
+
+	if err := goose.SetDialect("sqlite3"); err != nil {
 		return err
 	}
 

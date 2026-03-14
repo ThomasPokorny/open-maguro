@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/executor"
 	"open-maguro/internal/task_execution"
@@ -182,12 +181,11 @@ func (ke *KanbanExecutor) processTask(agentTaskID uuid.UUID, kanbanTaskID uuid.U
 	}
 
 	now := time.Now()
-	startedAt := pgtype.Timestamptz{Time: now, Valid: true}
 	if execution != nil {
 		if _, err := ke.execRepo.UpdateStatus(ke.ctx, task_execution.UpdateStatusParams{
 			ID:        execution.ID,
 			Status:    domain.StatusRunning,
-			StartedAt: startedAt,
+			StartedAt: &now,
 		}); err != nil {
 			logger.Error("failed to update execution to running", "error", err)
 		}
@@ -198,7 +196,7 @@ func (ke *KanbanExecutor) processTask(agentTaskID uuid.UUID, kanbanTaskID uuid.U
 	stdout, stderr, runErr := ke.executor.RunKanban(ke.ctx, *agentTask, prompt)
 
 	// Update kanban task status + execution record
-	finishedAt := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	finishedAt := time.Now()
 	if runErr != nil {
 		result := stderr
 		if result == "" {
@@ -208,13 +206,14 @@ func (ke *KanbanExecutor) processTask(agentTaskID uuid.UUID, kanbanTaskID uuid.U
 		logger.Error("kanban task failed", "title", kt.Title, "error", runErr)
 
 		if execution != nil {
+			summary := ptrIf(stdout, stdout != "")
 			ke.execRepo.UpdateStatus(ke.ctx, task_execution.UpdateStatusParams{
 				ID:         execution.ID,
 				Status:     domain.StatusFailure,
-				StartedAt:  startedAt,
-				FinishedAt: finishedAt,
-				Error:      pgtype.Text{String: result, Valid: true},
-				Summary:    pgtype.Text{String: stdout, Valid: stdout != ""},
+				StartedAt:  &now,
+				FinishedAt: &finishedAt,
+				Error:      &result,
+				Summary:    summary,
 			})
 		}
 	} else {
@@ -225,12 +224,19 @@ func (ke *KanbanExecutor) processTask(agentTaskID uuid.UUID, kanbanTaskID uuid.U
 			ke.execRepo.UpdateStatus(ke.ctx, task_execution.UpdateStatusParams{
 				ID:         execution.ID,
 				Status:     domain.StatusSuccess,
-				StartedAt:  startedAt,
-				FinishedAt: finishedAt,
-				Summary:    pgtype.Text{String: stdout, Valid: true},
+				StartedAt:  &now,
+				FinishedAt: &finishedAt,
+				Summary:    &stdout,
 			})
 		}
 	}
+}
+
+func ptrIf(s string, cond bool) *string {
+	if !cond {
+		return nil
+	}
+	return &s
 }
 
 func buildKanbanPrompt(agent *domain.AgentTask, kt *domain.KanbanTask) string {
