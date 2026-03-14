@@ -106,6 +106,14 @@ curl http://localhost:8080/api/v1/executions/{id}
 
 Execution fields: `status` (pending/running/success/failure), `started_at`, `finished_at`, `summary`, `error`, `task_name`, `triggered_by_execution_id`.
 
+```bash
+# Purge old executions (by duration or timestamp)
+curl -X DELETE "http://localhost:8080/api/v1/executions?older_than=30d"
+curl -X DELETE "http://localhost:8080/api/v1/executions?older_than=24h"
+```
+
+Old executions are also automatically purged daily (default: 30 days retention, configurable via `EXECUTION_RETENTION_DAYS`).
+
 ### Agent Chaining
 
 Chain agents so one triggers another on success or failure:

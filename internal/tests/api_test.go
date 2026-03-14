@@ -804,6 +804,89 @@ func TestAgentTaskWithoutCron(t *testing.T) {
 	}
 }
 
+func TestExecutionPurge(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create an agent and trigger execution to generate a record
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Purge test agent",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Say hello"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks/"+agentID+"/run", "")
+	assertStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+
+	// Wait for execution record to be created
+	time.Sleep(1 * time.Second)
+
+	// Verify we have at least 1 execution
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/executions", "")
+	assertStatus(t, resp, http.StatusOK)
+	var execs []map[string]any
+	parseJSON(t, resp, &execs)
+	if len(execs) == 0 {
+		t.Skip("no execution records created in test env")
+	}
+
+	// Purge without older_than should fail
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/executions", "")
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+
+	// Purge with older_than=0d should delete everything (0 days ago = now)
+	// But our records were just created, so "older than now" means everything
+	// Use a future timestamp to delete everything
+	futureTS := time.Now().Add(1 * time.Hour).UTC().Format(time.RFC3339)
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/executions?older_than="+futureTS, "")
+	assertStatus(t, resp, http.StatusOK)
+	var purgeResult map[string]any
+	parseJSON(t, resp, &purgeResult)
+	deleted := purgeResult["deleted"].(float64)
+	if deleted == 0 {
+		t.Fatalf("expected at least 1 deleted execution, got 0")
+	}
+
+	// Verify executions are gone
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/executions", "")
+	assertStatus(t, resp, http.StatusOK)
+	parseJSON(t, resp, &execs)
+	if len(execs) != 0 {
+		t.Fatalf("expected 0 executions after purge, got %d", len(execs))
+	}
+}
+
+func TestExecutionPurgeDurationFormat(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Test that duration formats are accepted (e.g., "30d", "24h")
+	// Even with no records, the endpoint should return 200 with deleted: 0
+	resp := doRequest(t, "DELETE", srv.URL+"/api/v1/executions?older_than=30d", "")
+	assertStatus(t, resp, http.StatusOK)
+	var result map[string]any
+	parseJSON(t, resp, &result)
+	if result["deleted"].(float64) != 0 {
+		t.Fatalf("expected 0 deleted with no records, got %v", result["deleted"])
+	}
+
+	// Test with hours format
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/executions?older_than=24h", "")
+	assertStatus(t, resp, http.StatusOK)
+	parseJSON(t, resp, &result)
+
+	// Test with invalid format
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/executions?older_than=garbage", "")
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+}
+
 func TestKanbanTaskExecutionLogging(t *testing.T) {
 	srv, cleanup := SetupTestServer(t)
 	defer cleanup()

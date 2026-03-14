@@ -27,32 +27,35 @@ type TaskDeleter interface {
 type ExecutionChecker interface {
 	GetLatestByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) (*domain.TaskExecution, error)
 	MarkStaleExecutionsFailed(ctx context.Context, staleBefore time.Time) (int, error)
+	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
 }
 
 type Scheduler struct {
-	cron      *cron.Cron
-	loader    TaskLoader
-	deleter   TaskDeleter
-	execCheck ExecutionChecker
-	executor  *executor.Executor
-	mu        sync.Mutex
-	wg        sync.WaitGroup
-	timers    map[uuid.UUID]*time.Timer
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cron          *cron.Cron
+	loader        TaskLoader
+	deleter       TaskDeleter
+	execCheck     ExecutionChecker
+	executor      *executor.Executor
+	retentionDays int
+	mu            sync.Mutex
+	wg            sync.WaitGroup
+	timers        map[uuid.UUID]*time.Timer
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
-func New(loader TaskLoader, deleter TaskDeleter, execCheck ExecutionChecker, exec *executor.Executor) *Scheduler {
+func New(loader TaskLoader, deleter TaskDeleter, execCheck ExecutionChecker, exec *executor.Executor, retentionDays int) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		cron:      cron.New(),
-		loader:    loader,
-		deleter:   deleter,
-		execCheck: execCheck,
-		executor:  exec,
-		timers:    make(map[uuid.UUID]*time.Timer),
-		ctx:       ctx,
-		cancel:    cancel,
+		cron:          cron.New(),
+		loader:        loader,
+		deleter:       deleter,
+		execCheck:     execCheck,
+		executor:      exec,
+		retentionDays: retentionDays,
+		timers:        make(map[uuid.UUID]*time.Timer),
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
@@ -66,6 +69,7 @@ func (s *Scheduler) Start() error {
 	}
 	s.cron.Start()
 	go s.heartbeatLoop()
+	go s.cleanupLoop()
 	slog.Info("scheduler started")
 	return nil
 }
@@ -315,6 +319,42 @@ func (s *Scheduler) runHeartbeat() {
 				}()
 			}
 		}
+	}
+}
+
+const cleanupInterval = 24 * time.Hour
+
+// cleanupLoop runs daily to purge old execution logs.
+func (s *Scheduler) cleanupLoop() {
+	if s.retentionDays <= 0 || s.execCheck == nil {
+		return
+	}
+
+	// Run once on startup
+	s.runCleanup()
+
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.runCleanup()
+		}
+	}
+}
+
+func (s *Scheduler) runCleanup() {
+	before := time.Now().AddDate(0, 0, -s.retentionDays)
+	count, err := s.execCheck.DeleteOlderThan(s.ctx, before)
+	if err != nil {
+		slog.Error("cleanup: failed to delete old executions", "error", err)
+		return
+	}
+	if count > 0 {
+		slog.Info("cleanup: purged old executions", "deleted", count, "older_than_days", s.retentionDays)
 	}
 }
 

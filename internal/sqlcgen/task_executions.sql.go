@@ -48,6 +48,19 @@ func (q *Queries) CreateTaskExecution(ctx context.Context, arg CreateTaskExecuti
 	return i, err
 }
 
+const deleteExecutionsOlderThan = `-- name: DeleteExecutionsOlderThan :execrows
+DELETE FROM task_executions
+WHERE created_at < $1
+`
+
+func (q *Queries) DeleteExecutionsOlderThan(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExecutionsOlderThan, createdAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getLatestExecutionByAgentTaskID = `-- name: GetLatestExecutionByAgentTaskID :one
 SELECT id, agent_task_id, status, started_at, finished_at, summary, error, created_at, task_name, triggered_by_execution_id FROM task_executions
 WHERE agent_task_id = $1

@@ -35,3 +35,7 @@ LIMIT 1;
 SELECT * FROM task_executions
 WHERE status = 'running'
 AND started_at < $1;
+
+-- name: DeleteExecutionsOlderThan :execrows
+DELETE FROM task_executions
+WHERE created_at < $1;

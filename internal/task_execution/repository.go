@@ -112,6 +112,14 @@ func (r *PostgresRepository) GetLatestByAgentTaskID(ctx context.Context, agentTa
 	return toDomain(row), nil
 }
 
+func (r *PostgresRepository) DeleteOlderThan(ctx context.Context, before time.Time) (int64, error) {
+	count, err := r.queries.DeleteExecutionsOlderThan(ctx, pgtype.Timestamptz{Time: before, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("delete old executions: %w", err)
+	}
+	return count, nil
+}
+
 func (r *PostgresRepository) MarkStaleExecutionsFailed(ctx context.Context, staleBefore time.Time) (int, error) {
 	rows, err := r.queries.ListStaleRunningExecutions(ctx, pgtype.Timestamptz{Time: staleBefore, Valid: true})
 	if err != nil {

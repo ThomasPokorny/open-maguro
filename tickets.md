@@ -28,8 +28,12 @@ Enable workflows where one agent triggers another.
 - [x] Add tests for chain execution and cycle detection
 - [x] Update docs
 - [x] Create new lovable prompt to also reflect those changes. The agent configuration ui, should enable one to create those agents
-
 [x] Kanban Task Queue — agents pick up assigned work items sequentially, maintain work-log.md in workspace. Migration 010, internal/kanban/ + internal/kanban_executor/, full CRUD API with status filters, auto-pickup on create, restart recovery.
+[x] Add `EXECUTION_RETENTION_DAYS` env var (default: 30)
+[x] Add a periodic cleanup goroutine (runs daily) that deletes executions older than retention period
+[x] Add `DELETE /api/v1/executions` endpoint for manual purge with optional `?older_than=` query param
+[x] Add test: verify old executions are cleaned up
+[x] Update docs
 
 ## Feature Backlog
 
@@ -59,13 +63,7 @@ Failed tasks stay failed. Automatic retries with backoff improve reliability.
 - [] Add tests for retry behavior (succeeds after retry, gives up after max)
 - [] Update docs
 
-### 4. Execution Log Retention & Cleanup
-Logs grow unbounded. A cleanup policy keeps the database healthy.
-- [] Add `EXECUTION_RETENTION_DAYS` env var (default: 30)
-- [] Add a periodic cleanup goroutine (runs daily) that deletes executions older than retention period
-- [] Add `DELETE /api/v1/executions` endpoint for manual purge with optional `?older_than=` query param
-- [] Add test: verify old executions are cleaned up
-- [] Update docs
+### 4. Execution Log Retention & Cleanup ✅ DONE
 
 ### 5. Webhook Notifications
 No way for external systems to know when tasks complete.

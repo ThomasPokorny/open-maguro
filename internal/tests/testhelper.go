@@ -111,7 +111,7 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 	workspaceRoot := t.TempDir() + "/workspaces"
 	testWorkspaceRoot = workspaceRoot
 	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, "", nil, workspaceRoot)
-	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec)
+	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec, 0)
 
 	// Wire up services and handlers
 	agentTaskService := agent_task.NewService(agentTaskRepo, workspaceRoot)

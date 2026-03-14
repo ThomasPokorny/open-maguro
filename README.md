@@ -28,6 +28,7 @@ go run cmd/api/main.go
 | `MCP_CONFIG_PATH` | No | — | Path to global MCP config file (mcp.json) |
 | `ALLOWED_TOOLS` | No | `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*` | Comma-separated tool patterns auto-approved for agents |
 | `WORKSPACE_ROOT` | No | `~/.maguro/workspaces` | Root directory for per-agent workspaces |
+| `EXECUTION_RETENTION_DAYS` | No | `30` | Days to keep execution logs (daily cleanup purges older) |
 
 ## API Endpoints
 
@@ -455,6 +456,29 @@ GET /api/v1/executions/{id}
 
 Response `200`: Task execution object.
 Response `404`: `{"error": "execution not found"}`
+
+#### Purge Old Executions
+
+```
+DELETE /api/v1/executions?older_than=30d
+DELETE /api/v1/executions?older_than=24h
+DELETE /api/v1/executions?older_than=2026-01-01T00:00:00Z
+```
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `older_than` | string | Yes | Duration (`30d`, `24h`) or RFC3339 timestamp |
+
+Response `200`:
+```json
+{"deleted": 42}
+```
+
+Response `400`: Missing or invalid `older_than` parameter.
+
+**Automatic cleanup:** A daily background job purges executions older than `EXECUTION_RETENTION_DAYS` (default: 30 days).
+
+---
 
 ## Tech Stack
 

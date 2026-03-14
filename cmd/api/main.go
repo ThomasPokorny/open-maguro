@@ -81,7 +81,7 @@ func main() {
 
 	// Wire up executor and scheduler
 	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, cfg.MCPConfigPath, cfg.AllowedTools, workspaceRoot)
-	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec)
+	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec, cfg.ExecutionRetentionDays)
 
 	// Wire up agent_task (with scheduler reload callback)
 	agentTaskService := agent_task.NewService(agentTaskRepo, workspaceRoot)
