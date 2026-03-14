@@ -1,6 +1,6 @@
 # OpenMaguro🐟
 
-Scheduled Claude Code SDK agent task orchestrator. Define agent tasks with cron schedules and track their execution history via a REST API.
+Scheduled Claude Code SDK agent task orchestrator. Define agent tasks with cron schedules and track their execution history via a REST API. Includes a React dashboard for managing agents, skills, kanban tasks, and teams.
 
 ## Quick Start
 
@@ -11,12 +11,14 @@ docker compose up -d
 # Copy env and adjust if needed
 cp .env.example .env
 
-# Run migrations
-goose -dir db/migrations postgres "$DATABASE_URL" up
-
-# Start the server
+# Start the API server (runs migrations automatically)
 go run cmd/api/main.go
+
+# Start the dashboard (in a separate terminal)
+cd maguro-dashboard && npm install && npm run dev
 ```
+
+The API runs on `http://localhost:8080`. The dashboard dev server proxies to it.
 
 ## Environment Variables
 
@@ -561,10 +563,18 @@ Response `400`: Missing or invalid `older_than` parameter.
 
 ## Tech Stack
 
-- **Go** with Chi router
+### Backend
+- **Go 1.24+** with Chi router
 - **PostgreSQL 17** with pgx/v5 driver
 - **sqlc** for type-safe SQL query generation
 - **Goose** for database migrations
+
+### Frontend (`maguro-dashboard/`)
+- **React 18** + TypeScript
+- **Vite** for dev server and builds
+- **Tailwind CSS** + **shadcn/ui** component library
+- **TanStack Query** for data fetching
+- **React Router** for navigation
 
 ## Development
 
@@ -572,14 +582,35 @@ Response `400`: Missing or invalid `older_than` parameter.
 # Regenerate sqlc code after changing queries
 sqlc generate
 
-# Build
+# Build backend
 go build ./...
+
+# Install frontend dependencies
+cd maguro-dashboard && npm install
+
+# Start frontend dev server
+cd maguro-dashboard && npm run dev
 ```
 
 Migrations run automatically on server startup (embedded via `go:embed` + goose).
 
+## Project Structure
+
+```
+open-maguro/
+├── cmd/api/              # Go API entry point
+├── internal/             # Go backend packages
+├── db/                   # Migrations and SQL queries
+├── maguro-dashboard/     # React frontend
+│   ├── src/components/   # UI views (Agents, Skills, Board, Logs)
+│   ├── src/lib/api.ts    # Typed API client
+│   └── src/pages/        # Route pages
+└── scripts/              # Utility scripts
+```
+
 ## Testing
 
+### Backend
 E2e API tests use [testcontainers-go](https://golang.testcontainers.org/) to spin up a real Postgres instance per test. Works with both Podman and Docker.
 
 ```bash
@@ -591,3 +622,11 @@ go test ./internal/tests/... -v -count=1
 ```
 
 Requires Podman or Docker to be running. On macOS with Podman, the socket is auto-detected.
+
+### Frontend
+
+```bash
+cd maguro-dashboard
+npm test            # run once
+npm run test:watch  # watch mode
+```

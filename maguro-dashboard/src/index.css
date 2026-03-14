@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* OpenMaguro🐟 Design System — Dark Navy / Teal accent theme */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* Background — deep navy near-black */
+    --background: 214 43% 9%;
+    --foreground: 214 32% 96%;
+
+    /* Cards — slightly lighter dark panels */
+    --card: 214 36% 13%;
+    --card-foreground: 214 32% 96%;
+
+    --popover: 214 36% 13%;
+    --popover-foreground: 214 32% 96%;
+
+    /* Primary — teal accent */
+    --primary: 174 63% 51%;
+    --primary-foreground: 214 43% 9%;
+
+    /* Secondary — slate blue */
+    --secondary: 215 25% 20%;
+    --secondary-foreground: 214 32% 96%;
+
+    /* Muted */
+    --muted: 215 25% 16%;
+    --muted-foreground: 215 20% 55%;
+
+    /* Accent — teal */
+    --accent: 174 63% 51%;
+    --accent-foreground: 214 43% 9%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 214 32% 96%;
+
+    /* Borders & inputs */
+    --border: 215 25% 22%;
+    --input: 215 25% 18%;
+    --ring: 174 63% 51%;
+
+    --radius: 0.625rem;
+
+    /* Status colors */
+    --status-success: 142 71% 45%;
+    --status-failure: 0 72% 51%;
+    --status-running: 174 63% 51%;
+    --status-pending: 215 20% 55%;
+
+    /* Panel surface above card */
+    --panel: 214 36% 16%;
+
+    /* Sidebar (unused but kept for compat) */
+    --sidebar-background: 214 43% 9%;
+    --sidebar-foreground: 214 32% 96%;
+    --sidebar-primary: 174 63% 51%;
+    --sidebar-primary-foreground: 214 43% 9%;
+    --sidebar-accent: 215 25% 20%;
+    --sidebar-accent-foreground: 214 32% 96%;
+    --sidebar-border: 215 25% 22%;
+    --sidebar-ring: 174 63% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .status-success { color: hsl(var(--status-success)); }
+  .status-failure { color: hsl(var(--status-failure)); }
+  .status-running { color: hsl(var(--status-running)); }
+  .status-pending { color: hsl(var(--status-pending)); }
+
+  .badge-success { background-color: hsl(var(--status-success) / 0.15); color: hsl(var(--status-success)); }
+  .badge-failure { background-color: hsl(var(--status-failure) / 0.15); color: hsl(var(--status-failure)); }
+  .badge-running { background-color: hsl(var(--status-running) / 0.15); color: hsl(var(--status-running)); }
+  .badge-pending { background-color: hsl(var(--status-pending) / 0.15); color: hsl(var(--status-pending)); }
+
+  .glass-panel {
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+  }
+}

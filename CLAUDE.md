@@ -3,8 +3,9 @@
 Scheduled Claude Code SDK agent task orchestrator with a REST API.
 
 ## Tech Stack
-- Go 1.24+, Chi router, pgx/v5 + sqlc, Goose migrations
-- PostgreSQL 17
+- **Backend**: Go 1.24+, Chi router, pgx/v5 + sqlc, Goose migrations
+- **Frontend**: React 18 + TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query
+- **Database**: PostgreSQL 17
 - robfig/cron/v3 for task scheduling
 - Claude CLI (`claude`) for agent execution — must be installed and on PATH
 
@@ -16,10 +17,13 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 
 ## Key Commands
 - `docker compose up -d` — start Postgres
-- `go run cmd/api/main.go` — start the API server
+- `go run cmd/api/main.go` — start the API server (port 8080)
 - `goose -dir db/migrations postgres "$DATABASE_URL" up` — run migrations
 - `sqlc generate` — regenerate database code from queries
 - `go test ./internal/tests/... -v` — run e2e API tests (requires Podman/Docker running)
+- `cd maguro-dashboard && npm run dev` — start the frontend dev server
+- `cd maguro-dashboard && npm run build` — production build
+- `cd maguro-dashboard && npm test` — run frontend tests
 
 ## Testing
 - E2e tests live in `internal/tests/` using testcontainers-go (spins up a real Postgres per test)
@@ -60,6 +64,9 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - internal/sqlcgen/ — sqlc generated code (do not edit manually)
 - db/migrations/ — Goose SQL migration files
 - db/queries/ — sqlc SQL query files
+- maguro-dashboard/ — React frontend (Vite + TypeScript + shadcn/ui)
+- maguro-dashboard/src/components/ — UI components (AgentsView, SkillsView, KanbanView, etc.)
+- maguro-dashboard/src/lib/api.ts — typed API client for all backend endpoints
 
 ## API Endpoints
 - GET /health — health check
