@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/cors"
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/kanban"
+	"open-maguro/internal/maguro_chat"
 	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/scheduled_task"
 	"open-maguro/internal/skill"
@@ -40,7 +41,7 @@ func WithStaticFS(staticFS fs.FS) Option {
 	}
 }
 
-func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler, kanbanHandler *kanban.Handler, teamHandler *team.Handler, opts ...Option) chi.Router {
+func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler, kanbanHandler *kanban.Handler, teamHandler *team.Handler, maguroChatHandler *maguro_chat.Handler, opts ...Option) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(cors.Handler(cors.Options{
@@ -67,6 +68,7 @@ func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.H
 		skillHandler.RegisterRoutes(r)
 		kanbanHandler.RegisterRoutes(r)
 		teamHandler.RegisterRoutes(r)
+		maguroChatHandler.RegisterRoutes(r)
 	})
 
 	for _, opt := range opts {

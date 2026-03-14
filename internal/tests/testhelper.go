@@ -14,6 +14,7 @@ import (
 	"open-maguro/internal/executor"
 	"open-maguro/internal/kanban"
 	kanbanexec "open-maguro/internal/kanban_executor"
+	"open-maguro/internal/maguro_chat"
 	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/router"
 	"open-maguro/internal/scheduled_task"
@@ -110,7 +111,10 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 		kanban.WithOnTaskCreated(kExec.Enqueue),
 	)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler)
+	maguroChatService := maguro_chat.NewService(skillRepo, agentTaskRepo, workspaceRoot, "", nil, "8080")
+	maguroChatHandler := maguro_chat.NewHandler(maguroChatService, validate)
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler, maguroChatHandler)
 	srv := httptest.NewServer(r)
 
 	return srv, func() {

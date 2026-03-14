@@ -29,6 +29,7 @@ import (
 	"open-maguro/internal/executor"
 	"open-maguro/internal/kanban"
 	kanbanexec "open-maguro/internal/kanban_executor"
+	"open-maguro/internal/maguro_chat"
 	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/router"
 	"open-maguro/internal/scheduled_task"
@@ -164,6 +165,10 @@ func main() {
 		kanban.WithOnTaskCreated(kanbanExec.Enqueue),
 	)
 
+	// Wire up maguro chat (meta-agent)
+	maguroChatService := maguro_chat.NewService(skillRepo, agentTaskRepo, workspaceRoot, cfg.MCPConfigPath, cfg.AllowedTools, cfg.Port)
+	maguroChatHandler := maguro_chat.NewHandler(maguroChatService, validate)
+
 	// Serve embedded dashboard
 	staticFS, err := fs.Sub(dashboard.Static, "dist")
 	if err != nil {
@@ -171,16 +176,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler,
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler, maguroChatHandler,
 		router.WithStaticFS(staticFS),
 	)
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:        ":" + cfg.Port,
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		IdleTimeout: 60 * time.Second,
 	}
 
 	// Start scheduler

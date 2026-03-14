@@ -8,27 +8,12 @@ import (
 )
 
 func Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dsn)
+	// Append pragmas to the DSN so they apply to every connection from the pool.
+	// This ensures foreign keys, WAL mode, and busy timeout are always active.
+	connector := dsn + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", connector)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open database: %w", err)
-	}
-
-	// Enable WAL mode for better concurrent performance
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("unable to set WAL mode: %w", err)
-	}
-
-	// Set busy timeout to 5 seconds so concurrent writers wait instead of failing
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("unable to set busy timeout: %w", err)
-	}
-
-	// Enable foreign key enforcement
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("unable to enable foreign keys: %w", err)
 	}
 
 	if err := db.Ping(); err != nil {

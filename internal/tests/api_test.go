@@ -1344,6 +1344,42 @@ func TestSkillEnvironmentSecrets(t *testing.T) {
 	}
 }
 
+func TestChatValidation(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Empty body — 400
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/chat", "")
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+
+	// Empty message — 422
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/chat", `{"message": ""}`)
+	assertStatus(t, resp, http.StatusUnprocessableEntity)
+	resp.Body.Close()
+
+	// Invalid JSON — 400
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/chat", `not json`)
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+}
+
+func TestChatWorkspaceCreation(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Send a chat message — will fail (no claude CLI) but should create workspace
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/chat", `{"message": "hello"}`)
+	resp.Body.Close()
+	// We don't assert status because claude CLI isn't available in tests,
+	// but the workspace directory should have been created
+	workspaceRoot := GetWorkspaceRoot(t)
+	chatDir := workspaceRoot + "/maguro-chat"
+	if _, err := os.Stat(chatDir); os.IsNotExist(err) {
+		t.Fatalf("expected maguro-chat workspace to be created at %s", chatDir)
+	}
+}
+
 func TestSkillWithoutSecrets(t *testing.T) {
 	srv, cleanup := SetupTestServer(t)
 	defer cleanup()

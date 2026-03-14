@@ -427,3 +427,95 @@ The `environment_secrets` field is **write-only** — it never appears in any AP
 - **Team deletion flow:** Show confirmation → DELETE → if deleted team was active, switch to "All Agents" → refresh agent list (some agents will now have `team_id: null`).
 - **Empty team state:** When a team is selected but has no agents, show a friendly message: "No agents in this swarm yet. Assign agents from the Agents view."
 - **Toast notifications:** Show toasts for: swarm created, swarm updated, swarm deleted, errors.
+
+---
+
+# Maguro Chat UI 🐟
+
+Add a new "Chat" view to the OpenMaguro dashboard — a borderless chat interface for talking to the Maguro meta-agent.
+
+## 1. API Client (`src/lib/api.ts`)
+
+Add a new interface and function:
+
+```ts
+export interface ChatResponse {
+  reply: string;
+  session_id?: string;
+}
+
+export function sendChatMessage(message: string): Promise<ChatResponse> {
+  return request<ChatResponse>("/chat", {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
+export function resetChatSession(): Promise<void> {
+  return request<void>("/chat/reset", { method: "POST" });
+}
+```
+
+## 2. New Component: `src/components/MaguroChatView.tsx`
+
+Create a chat interface component:
+
+- **Layout**: Full-height flex column. No max-width container — the chat should stretch borderless from the sidebar edge to the right side of the screen. No header bar when in chat tab (the chat IS the view). Messages area takes all available space, input pinned to bottom.
+
+- **Messages area** (`flex-1 overflow-y-auto`):
+  - User messages: right-aligned, teal/primary background bubble, rounded corners
+  - Maguro replies: left-aligned, subtle dark background (`bg-secondary/30`), rounded corners
+  - Maguro replies should render with a **typewriter effect** — characters appear one by one with a ~15ms interval. Use a `useEffect` with `setInterval` that incrementally reveals the text. Once complete, store the full text so re-renders don't re-animate.
+  - Support markdown in replies — use a simple approach: split by `\n` for line breaks, wrap `` `code` `` in `<code>` tags, and `**bold**` in `<strong>` tags. No need for a full markdown library.
+
+- **Loading indicator**: When waiting for a response, show animated fish swimming from right to left:
+  ```
+  🐟  🐠  🐡
+  ```
+  Use CSS animation: three fish emojis spaced apart, each translating from right to left with staggered `animation-delay` (0s, 0.3s, 0.6s). Use `@keyframes swimLeft` with `translateX`. Loop infinitely. Small text size (~16px). Left-aligned like a Maguro message bubble.
+
+- **Input area** (bottom, sticky):
+  - Single-line input or auto-expanding textarea (max 4 rows)
+  - Send button with a fish icon or arrow
+  - `Enter` to send, `Shift+Enter` for newline
+  - Disabled while waiting for response
+  - Placeholder: `"Message Maguro 🐟..."`
+
+- **Session reset**: Small subtle button in the top-right corner of the chat area — "New conversation" with a refresh icon. Calls `resetChatSession()` and clears the local messages array.
+
+- **State management**:
+  - `messages: Array<{role: 'user' | 'maguro', text: string}>` in local state
+  - `isLoading: boolean`
+  - Use `useMutation` from TanStack Query for the chat call
+  - Auto-scroll to bottom on new messages
+
+## 3. Sidebar (`src/components/AppSidebar.tsx`)
+
+- Add `"chat"` to the `Tab` type
+- Add a new nav item **above all others** in `NAV_ITEMS`:
+  ```ts
+  { tab: "chat", label: "Chat", icon: MessageCircle }
+  ```
+  Import `MessageCircle` from `lucide-react`.
+
+## 4. Index page (`src/pages/Index.tsx`)
+
+- Add `"chat"` to the `Tab` type
+- Import and render `MaguroChatView` when `activeTab === "chat"`
+- **Important**: When the chat tab is active, hide the header bar and remove the `max-w-5xl mx-auto px-6 py-6` container — the chat view should be completely borderless (flush with the sidebar). Render it directly inside the `flex-1` main area div, bypassing the `<main>` wrapper.
+- Set `"chat"` as the **default active tab** (`useState<Tab>("chat")`)
+
+## 5. Header title
+
+Add to the header title conditionals:
+```tsx
+{activeTab === "chat" && "Maguro Chat 🐟"}
+```
+(Though the header is hidden for chat, keep this for completeness.)
+
+## Design notes
+
+- Match the existing dark theme (navy background `bg-background`, teal accent `text-primary`)
+- Chat bubbles should feel lightweight, not boxy — small padding, rounded-2xl
+- The fish loading animation should be playful but not distracting — small, subtle, smooth
+- The typewriter effect should be fast enough to feel responsive (~15ms per character) but slow enough to notice
