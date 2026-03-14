@@ -202,7 +202,7 @@ func main() {
 	}()
 
 	fmt.Print(banner)
-	fmt.Println("OpenMaguro🐟 v0.1 — swim upstream, think downstream.")
+	fmt.Println("OpenMaguro🐟 v0.2.0 — swim upstream, think downstream.")
 	fmt.Printf("🎏Dashboard: http://localhost:%s\n\n", cfg.Port)
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

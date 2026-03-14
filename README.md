@@ -5,7 +5,7 @@
 ▙▌▙▌▙▖▌▌  ▌▌▌█▌▙▌▙▌▌ ▙▌
   ▌            ▄▌      
 
-OpenMaguro🐟 v0.1 — swim upstream, think downstream.
+OpenMaguro🐟 v0.2.0 — swim upstream, think downstream.
 ```
 
 Scheduled Claude Code SDK agent task orchestrator. Define agent tasks with cron schedules and track their execution history via a REST API. Includes a React dashboard for managing agents, skills, kanban tasks, and teams.
