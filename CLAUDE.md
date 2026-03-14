@@ -48,6 +48,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - internal/skill/ — Skills feature (CRUD + agent-skill associations)
 - internal/kanban/ — Kanban task feature (CRUD, assigned to agents)
 - internal/kanban_executor/ — Kanban worker pool (one worker per agent, sequential processing)
+- internal/team/ — Team feature (CRUD, agent grouping with hex color)
 - internal/mcp_config/ — MCP server config management (read/write mcp.json)
 - internal/config/ — configuration loading
 - internal/database/ — database connection pool
@@ -85,10 +86,16 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - GET /api/v1/executions/{id} — get execution by id
 - DELETE /api/v1/executions?older_than= — purge old executions (accepts RFC3339 timestamp or duration: '30d', '24h')
 - POST /api/v1/kanban-tasks — create kanban task (title, description, agent_task_id)
-- GET /api/v1/kanban-tasks — list kanban tasks (done >2h filtered, ?agent_id= ?status= filters)
+- GET /api/v1/kanban-tasks — list kanban tasks (done >2h filtered, ?agent_id= ?status= ?team_id= filters)
 - GET /api/v1/kanban-tasks/{id} — get kanban task
 - PATCH /api/v1/kanban-tasks/{id} — update kanban task
 - DELETE /api/v1/kanban-tasks/{id} — delete kanban task
+- POST /api/v1/teams — create team (title, description, color)
+- GET /api/v1/teams — list teams
+- GET /api/v1/teams/{id} — get team
+- PATCH /api/v1/teams/{id} — partial update team
+- DELETE /api/v1/teams/{id} — delete team (unassigns agents via ON DELETE SET NULL)
+- Agent tasks support `team_id` field for team assignment, filterable via `?team_id=` on list endpoints
 
 ## Conventions
 - Use log/slog for all logging

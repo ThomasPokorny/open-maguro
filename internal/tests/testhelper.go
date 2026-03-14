@@ -27,6 +27,7 @@ import (
 	"open-maguro/internal/scheduler"
 	"open-maguro/internal/skill"
 	"open-maguro/internal/task_execution"
+	"open-maguro/internal/team"
 )
 
 func init() {
@@ -134,6 +135,10 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 	skillService := skill.NewService(skillRepo)
 	skillHandler := skill.NewHandler(skillService, validate)
 
+	teamRepo := team.NewPostgresRepository(pool)
+	teamService := team.NewService(teamRepo)
+	teamHandler := team.NewHandler(teamService, validate)
+
 	kanbanRepo := kanban.NewPostgresRepository(pool)
 	kanbanService := kanban.NewService(kanbanRepo)
 	kExec := kanbanexec.New(kanbanRepo, agentTaskRepo, taskExecRepo, exec)
@@ -141,7 +146,7 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 		kanban.WithOnTaskCreated(kExec.Enqueue),
 	)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler)
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler)
 	srv := httptest.NewServer(r)
 
 	return srv, func() {

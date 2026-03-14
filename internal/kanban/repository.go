@@ -82,6 +82,14 @@ func (r *PostgresRepository) ListByAgentIDAndStatus(ctx context.Context, agentID
 	return toDomainList(rows), nil
 }
 
+func (r *PostgresRepository) ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.KanbanTask, error) {
+	rows, err := r.queries.ListKanbanTasksByTeamID(ctx, pgtype.UUID{Bytes: teamID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("list kanban tasks by team: %w", err)
+	}
+	return toDomainList(rows), nil
+}
+
 func (r *PostgresRepository) ListPendingByAgentID(ctx context.Context, agentID uuid.UUID) ([]domain.KanbanTask, error) {
 	rows, err := r.queries.ListPendingKanbanTasksByAgentID(ctx, agentID)
 	if err != nil {

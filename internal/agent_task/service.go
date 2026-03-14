@@ -15,6 +15,7 @@ type Repository interface {
 	Create(ctx context.Context, params CreateRequest) (*domain.AgentTask, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.AgentTask, error)
 	List(ctx context.Context) ([]domain.AgentTask, error)
+	ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.AgentTask, error)
 	Update(ctx context.Context, id uuid.UUID, params UpdateRequest) (*domain.AgentTask, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -52,6 +53,10 @@ func (s *Service) List(ctx context.Context) ([]domain.AgentTask, error) {
 	return s.repo.List(ctx)
 }
 
+func (s *Service) ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.AgentTask, error) {
+	return s.repo.ListByTeamID(ctx, teamID)
+}
+
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (*domain.AgentTask, error) {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -70,6 +75,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 		GlobalSkillAccess: &existing.GlobalSkillAccess,
 		OnSuccessTaskID:   existing.OnSuccessTaskID,
 		OnFailureTaskID:   existing.OnFailureTaskID,
+		TeamID:            existing.TeamID,
 	}
 	if req.Name != nil {
 		merged.Name = req.Name
@@ -100,6 +106,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	}
 	if req.OnFailureTaskID != nil {
 		merged.OnFailureTaskID = req.OnFailureTaskID
+	}
+	if req.TeamIDSet {
+		merged.TeamID = req.TeamID
 	}
 
 	// Validate no circular chains

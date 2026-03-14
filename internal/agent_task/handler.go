@@ -88,7 +88,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	tasks, err := h.service.List(r.Context())
+	var tasks []domain.AgentTask
+	var err error
+
+	if teamIDStr := r.URL.Query().Get("team_id"); teamIDStr != "" {
+		teamID, parseErr := uuid.Parse(teamIDStr)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid team_id")
+			return
+		}
+		tasks, err = h.service.ListByTeamID(r.Context(), teamID)
+	} else {
+		tasks, err = h.service.List(r.Context())
+	}
+
 	if err != nil {
 		slog.Error("failed to list agent tasks", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list agent tasks")

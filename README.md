@@ -68,7 +68,7 @@ Request body:
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | Yes | — | Human-readable task name (max 255 chars) |
-| `cron_expression` | string | Yes | — | Cron schedule expression |
+| `cron_expression` | string | No | — | Cron schedule expression (omit for non-scheduled agents) |
 | `prompt` | string | Yes | — | Instruction for the Claude Code SDK agent |
 | `enabled` | bool | No | `true` | Whether the task is active |
 | `mcp_config` | string | No | — | Path to custom MCP config file (overrides global) |
@@ -77,6 +77,7 @@ Request body:
 | `global_skill_access` | bool | No | `false` | Grant access to all skills (instead of only assigned ones) |
 | `on_success_task_id` | uuid | No | — | Agent task to trigger when this task succeeds |
 | `on_failure_task_id` | uuid | No | — | Agent task to trigger when this task fails |
+| `team_id` | uuid | No | — | Team to assign this agent to |
 
 Response `201`:
 ```json
@@ -99,6 +100,8 @@ Response `201`:
 ```
 GET /api/v1/agent-tasks
 ```
+
+Query params: `?team_id={uuid}` to filter by team.
 
 Response `200`: Array of agent task objects (ordered by created_at DESC).
 
@@ -386,6 +389,7 @@ Response `201`: Kanban task object with `status: "todo"`. The assigned agent's w
 GET /api/v1/kanban-tasks
 GET /api/v1/kanban-tasks?agent_id={uuid}
 GET /api/v1/kanban-tasks?status=todo
+GET /api/v1/kanban-tasks?team_id={uuid}
 GET /api/v1/kanban-tasks?agent_id={uuid}&status=progress
 ```
 
@@ -404,6 +408,51 @@ Response `200`: Array of kanban task objects. Done tasks older than 2 hours are 
 GET /api/v1/kanban-tasks/{id}
 PATCH /api/v1/kanban-tasks/{id}
 DELETE /api/v1/kanban-tasks/{id}
+```
+
+---
+
+### Teams
+
+Organize agents into teams. Each agent can belong to one team (nullable FK). Deleting a team unassigns its agents (ON DELETE SET NULL).
+
+#### Create Team
+
+```
+POST /api/v1/teams
+```
+
+Request body:
+```json
+{
+  "title": "Data Team",
+  "description": "Agents that handle data processing",
+  "color": "#6366f1"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `title` | string | Yes | — | Team name (max 255 chars) |
+| `description` | string | No | `""` | Team description |
+| `color` | string | No | `#6366f1` | Hex color code |
+
+Response `201`: Team object.
+
+#### List Teams
+
+```
+GET /api/v1/teams
+```
+
+Response `200`: Array of team objects (ordered by created_at DESC).
+
+#### Get / Update / Delete Team
+
+```
+GET /api/v1/teams/{id}
+PATCH /api/v1/teams/{id}
+DELETE /api/v1/teams/{id}
 ```
 
 ---

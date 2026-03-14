@@ -31,6 +31,7 @@ import (
 	"open-maguro/internal/scheduler"
 	"open-maguro/internal/skill"
 	"open-maguro/internal/task_execution"
+	"open-maguro/internal/team"
 )
 
 func main() {
@@ -108,6 +109,11 @@ func main() {
 	skillService := skill.NewService(skillRepo)
 	skillHandler := skill.NewHandler(skillService, validate)
 
+	// Wire up teams
+	teamRepo := team.NewPostgresRepository(pool)
+	teamService := team.NewService(teamRepo)
+	teamHandler := team.NewHandler(teamService, validate)
+
 	// Wire up kanban
 	kanbanRepo := kanban.NewPostgresRepository(pool)
 	kanbanService := kanban.NewService(kanbanRepo)
@@ -119,7 +125,7 @@ func main() {
 		kanban.WithOnTaskCreated(kanbanExec.Enqueue),
 	)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler)
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler, teamHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

@@ -34,6 +34,11 @@ Enable workflows where one agent triggers another.
 [x] Add `DELETE /api/v1/executions` endpoint for manual purge with optional `?older_than=` query param
 [x] Add test: verify old executions are cleaned up
 [x] Update docs
+[x] Agent Teams - As a user I want to be able to create teams - and assign agents to them. A team should have a title and a optional description. each agent can be in one swarm team exactly (null able fk on agent). furthermore teams can have a hex color
+- [x] migration and crud api for teams
+- [x] possibility to assign agent to team
+- [x] possibility to filter agent by team
+- [x] possibility to filter tasks by team
 
 ## Feature Backlog
 

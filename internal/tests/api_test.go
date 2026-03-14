@@ -949,6 +949,254 @@ func TestKanbanTaskExecutionLogging(t *testing.T) {
 	}
 }
 
+func TestTeamCRUD(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/teams", `{
+		"title": "Backend Team",
+		"description": "Handles backend services",
+		"color": "#ff5733"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	teamID := created["id"].(string)
+
+	if created["title"] != "Backend Team" {
+		t.Fatalf("expected title 'Backend Team', got %v", created["title"])
+	}
+	if created["description"] != "Handles backend services" {
+		t.Fatalf("expected description, got %v", created["description"])
+	}
+	if created["color"] != "#ff5733" {
+		t.Fatalf("expected color '#ff5733', got %v", created["color"])
+	}
+
+	// Get
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/teams/"+teamID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var fetched map[string]any
+	parseJSON(t, resp, &fetched)
+	if fetched["id"] != teamID {
+		t.Fatalf("expected id %s, got %v", teamID, fetched["id"])
+	}
+
+	// List
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/teams", "")
+	assertStatus(t, resp, http.StatusOK)
+	var list []map[string]any
+	parseJSON(t, resp, &list)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 team, got %d", len(list))
+	}
+
+	// Update
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/teams/"+teamID, `{"title": "Platform Team", "color": "#00ff00"}`)
+	assertStatus(t, resp, http.StatusOK)
+	var updated map[string]any
+	parseJSON(t, resp, &updated)
+	if updated["title"] != "Platform Team" {
+		t.Fatalf("expected title 'Platform Team', got %v", updated["title"])
+	}
+	if updated["color"] != "#00ff00" {
+		t.Fatalf("expected color '#00ff00', got %v", updated["color"])
+	}
+	if updated["description"] != "Handles backend services" {
+		t.Fatalf("expected description preserved, got %v", updated["description"])
+	}
+
+	// Delete
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/teams/"+teamID, "")
+	assertStatus(t, resp, http.StatusNoContent)
+
+	// Verify deleted
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/teams/"+teamID, "")
+	assertStatus(t, resp, http.StatusNotFound)
+}
+
+func TestTeamDefaultColor(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create without color — should get default
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/teams", `{
+		"title": "Default Color Team"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	if created["color"] != "#6366f1" {
+		t.Fatalf("expected default color '#6366f1', got %v", created["color"])
+	}
+}
+
+func TestAgentTeamAssignment(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create a team
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/teams", `{
+		"title": "Data Team",
+		"color": "#2dd4bf"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var team map[string]any
+	parseJSON(t, resp, &team)
+	teamID := team["id"].(string)
+
+	// Create agent with team_id
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Data Agent",
+		"prompt": "Process data",
+		"team_id": "`+teamID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+	if agent["team_id"] != teamID {
+		t.Fatalf("expected team_id %s on create, got %v", teamID, agent["team_id"])
+	}
+
+	// Create agent without team
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Solo Agent",
+		"prompt": "Work alone"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var soloAgent map[string]any
+	parseJSON(t, resp, &soloAgent)
+
+	// Filter agents by team_id
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks?team_id="+teamID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var filtered []map[string]any
+	parseJSON(t, resp, &filtered)
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 agent in team, got %d", len(filtered))
+	}
+	if filtered[0]["name"] != "Data Agent" {
+		t.Fatalf("expected 'Data Agent', got %v", filtered[0]["name"])
+	}
+
+	// Update agent to remove team (set to null via PATCH)
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/agent-tasks/"+agentID, `{
+		"team_id": null
+	}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Team filter should now return 0
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks?team_id="+teamID, "")
+	assertStatus(t, resp, http.StatusOK)
+	parseJSON(t, resp, &filtered)
+	if len(filtered) != 0 {
+		t.Fatalf("expected 0 agents in team after removal, got %d", len(filtered))
+	}
+}
+
+func TestTeamDeleteUnassignsAgents(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create team
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/teams", `{
+		"title": "Temp Team",
+		"color": "#ff0000"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var tm map[string]any
+	parseJSON(t, resp, &tm)
+	teamID := tm["id"].(string)
+
+	// Create agent in team
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Team Agent",
+		"prompt": "Work in team",
+		"team_id": "`+teamID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	// Delete team
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/teams/"+teamID, "")
+	assertStatus(t, resp, http.StatusNoContent)
+
+	// Agent should still exist but team_id should be null (ON DELETE SET NULL)
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks/"+agentID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var fetched map[string]any
+	parseJSON(t, resp, &fetched)
+	if val, ok := fetched["team_id"]; ok && val != nil {
+		t.Fatalf("expected team_id to be null after team deletion, got %v", val)
+	}
+}
+
+func TestKanbanTaskTeamFilter(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create team
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/teams", `{
+		"title": "Kanban Team",
+		"color": "#0000ff"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var tm map[string]any
+	parseJSON(t, resp, &tm)
+	teamID := tm["id"].(string)
+
+	// Create agent in team
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Team Worker",
+		"prompt": "Work",
+		"team_id": "`+teamID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	// Create agent NOT in team
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Solo Worker",
+		"prompt": "Work alone"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var soloAgent map[string]any
+	parseJSON(t, resp, &soloAgent)
+	soloAgentID := soloAgent["id"].(string)
+
+	// Create kanban task for team agent
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/kanban-tasks", `{
+		"title": "Team task",
+		"agent_task_id": "`+agentID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Create kanban task for solo agent
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/kanban-tasks", `{
+		"title": "Solo task",
+		"agent_task_id": "`+soloAgentID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Filter kanban tasks by team
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks?team_id="+teamID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var filtered []map[string]any
+	parseJSON(t, resp, &filtered)
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 kanban task in team, got %d", len(filtered))
+	}
+	if filtered[0]["title"] != "Team task" {
+		t.Fatalf("expected 'Team task', got %v", filtered[0]["title"])
+	}
+}
+
 // Helpers
 
 func doRequest(t *testing.T, method, url, body string) *http.Response {

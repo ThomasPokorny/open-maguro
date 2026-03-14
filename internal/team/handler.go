@@ -1,4 +1,4 @@
-package kanban
+package team
 
 import (
 	"encoding/json"
@@ -8,33 +8,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"open-maguro/internal/domain"
 )
 
 type Handler struct {
-	service       *Service
-	validate      *validator.Validate
-	onTaskCreated func(domain.KanbanTask)
+	service  *Service
+	validate *validator.Validate
 }
 
-type HandlerOption func(*Handler)
-
-func WithOnTaskCreated(fn func(domain.KanbanTask)) HandlerOption {
-	return func(h *Handler) {
-		h.onTaskCreated = fn
-	}
-}
-
-func NewHandler(service *Service, validate *validator.Validate, opts ...HandlerOption) *Handler {
-	h := &Handler{service: service, validate: validate}
-	for _, opt := range opts {
-		opt(h)
-	}
-	return h
+func NewHandler(service *Service, validate *validator.Validate) *Handler {
+	return &Handler{service: service, validate: validate}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
-	r.Route("/kanban-tasks", func(r chi.Router) {
+	r.Route("/teams", func(r chi.Router) {
 		r.Post("/", h.Create)
 		r.Get("/", h.List)
 		r.Get("/{id}", h.Get)
@@ -55,55 +41,25 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.service.Create(r.Context(), req)
+	t, err := h.service.Create(r.Context(), req)
 	if err != nil {
-		slog.Error("failed to create kanban task", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to create kanban task")
+		slog.Error("failed to create team", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to create team")
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, ToResponse(task))
-
-	// Notify kanban executor to pick up the task
-	if h.onTaskCreated != nil {
-		h.onTaskCreated(*task)
-	}
+	writeJSON(w, http.StatusCreated, ToResponse(t))
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	var agentID *uuid.UUID
-	if raw := r.URL.Query().Get("agent_id"); raw != "" {
-		id, err := uuid.Parse(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid agent_id")
-			return
-		}
-		agentID = &id
-	}
-
-	var status *string
-	if raw := r.URL.Query().Get("status"); raw != "" {
-		status = &raw
-	}
-
-	var teamID *uuid.UUID
-	if raw := r.URL.Query().Get("team_id"); raw != "" {
-		id, err := uuid.Parse(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid team_id")
-			return
-		}
-		teamID = &id
-	}
-
-	tasks, err := h.service.List(r.Context(), agentID, status, teamID)
+	teams, err := h.service.List(r.Context())
 	if err != nil {
-		slog.Error("failed to list kanban tasks", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to list kanban tasks")
+		slog.Error("failed to list teams", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list teams")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ToResponseList(tasks))
+	writeJSON(w, http.StatusOK, ToResponseList(teams))
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -113,13 +69,13 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.service.GetByID(r.Context(), id)
+	t, err := h.service.GetByID(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "kanban task not found")
+		writeError(w, http.StatusNotFound, "team not found")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ToResponse(task))
+	writeJSON(w, http.StatusOK, ToResponse(t))
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -140,13 +96,13 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.service.Update(r.Context(), id, req)
+	t, err := h.service.Update(r.Context(), id, req)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "kanban task not found")
+		writeError(w, http.StatusNotFound, "team not found")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ToResponse(task))
+	writeJSON(w, http.StatusOK, ToResponse(t))
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -157,8 +113,8 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.Delete(r.Context(), id); err != nil {
-		slog.Error("failed to delete kanban task", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to delete kanban task")
+		slog.Error("failed to delete team", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to delete team")
 		return
 	}
 

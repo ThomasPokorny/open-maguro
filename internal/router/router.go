@@ -13,9 +13,10 @@ import (
 	"open-maguro/internal/scheduled_task"
 	"open-maguro/internal/skill"
 	"open-maguro/internal/task_execution"
+	"open-maguro/internal/team"
 )
 
-func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler, kanbanHandler *kanban.Handler) chi.Router {
+func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.Handler, scheduledTaskHandler *scheduled_task.Handler, mcpConfigHandler *mcp_config.Handler, skillHandler *skill.Handler, kanbanHandler *kanban.Handler, teamHandler *team.Handler) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(cors.Handler(cors.Options{
@@ -41,6 +42,7 @@ func New(agentTaskHandler *agent_task.Handler, taskExecHandler *task_execution.H
 		mcpConfigHandler.RegisterRoutes(r)
 		skillHandler.RegisterRoutes(r)
 		kanbanHandler.RegisterRoutes(r)
+		teamHandler.RegisterRoutes(r)
 	})
 
 	return r

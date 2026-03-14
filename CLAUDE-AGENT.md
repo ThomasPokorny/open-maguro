@@ -78,7 +78,7 @@ curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{id} \
   -d '{"enabled": false}'
 ```
 
-Any field can be updated: `name`, `cron_expression`, `prompt`, `enabled`, `on_success_task_id`, `on_failure_task_id`.
+Any field can be updated: `name`, `cron_expression`, `prompt`, `enabled`, `on_success_task_id`, `on_failure_task_id`, `team_id`. Set `team_id` to `null` to unassign.
 
 ### Delete a Task
 
@@ -180,6 +180,39 @@ curl "http://localhost:8080/api/v1/kanban-tasks?agent_id={agent-id}&status=todo"
 
 Statuses: `todo` → `progress` → `done`/`failed`. Done tasks older than 2 hours are hidden from the default list.
 
+### Teams
+
+Organize agents into teams with a title, description, and hex color. Each agent can be in one team.
+
+```bash
+# Create a team
+curl -X POST http://localhost:8080/api/v1/teams \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "Data Team", "color": "#6366f1"}'
+
+# List teams
+curl http://localhost:8080/api/v1/teams
+
+# Assign agent to team
+curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{id} \
+  -H 'Content-Type: application/json' \
+  -d '{"team_id": "{team-uuid}"}'
+
+# Remove agent from team
+curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{id} \
+  -H 'Content-Type: application/json' \
+  -d '{"team_id": null}'
+
+# Filter agents by team
+curl "http://localhost:8080/api/v1/agent-tasks?team_id={team-uuid}"
+
+# Filter kanban tasks by team
+curl "http://localhost:8080/api/v1/kanban-tasks?team_id={team-uuid}"
+
+# Delete team (unassigns agents, doesn't delete them)
+curl -X DELETE http://localhost:8080/api/v1/teams/{id}
+```
+
 ## How to Handle User Requests
 
 **"Remind me to X at Y time"** → Create a one-time scheduled task. Convert the time to UTC.
@@ -207,5 +240,11 @@ Statuses: `todo` → `progress` → `done`/`failed`. Done tasks older than 2 hou
 **"Assign this task to agent X"** → POST to `/api/v1/kanban-tasks` with the agent's ID. The agent picks it up automatically.
 
 **"What's agent X working on?"** → GET `/api/v1/kanban-tasks?agent_id={id}&status=progress`.
+
+**"Create a team for X"** → POST to `/api/v1/teams` with title, optional description and color.
+
+**"Add agent X to team Y"** → PATCH agent with `{"team_id": "<team UUID>"}`.
+
+**"Show me all agents in team Y"** → GET `/api/v1/agent-tasks?team_id={team-uuid}`.
 
 **User describes a reusable capability** → Consider creating a skill. If an agent needs to use a specific API, the skill should contain endpoint references, authentication details, and examples.

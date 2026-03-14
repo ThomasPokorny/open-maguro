@@ -65,6 +65,11 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		cronExpr = pgtype.Text{String: *params.CronExpression, Valid: true}
 	}
 
+	teamID := pgtype.UUID{}
+	if params.TeamID != nil {
+		teamID = pgtype.UUID{Bytes: *params.TeamID, Valid: true}
+	}
+
 	row, err := r.queries.CreateAgentTask(ctx, sqlcgen.CreateAgentTaskParams{
 		Name:              params.Name,
 		CronExpression:    cronExpr,
@@ -76,6 +81,7 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		GlobalSkillAccess: globalSkillAccess,
 		OnSuccessTaskID:   onSuccessTaskID,
 		OnFailureTaskID:   onFailureTaskID,
+		TeamID:            teamID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create agent task: %w", err)
@@ -142,6 +148,11 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		onFailureTaskID = pgtype.UUID{Bytes: *params.OnFailureTaskID, Valid: true}
 	}
 
+	teamID := pgtype.UUID{}
+	if params.TeamID != nil {
+		teamID = pgtype.UUID{Bytes: *params.TeamID, Valid: true}
+	}
+
 	row, err := r.queries.UpdateAgentTask(ctx, sqlcgen.UpdateAgentTaskParams{
 		ID:                id,
 		Name:              *params.Name,
@@ -154,6 +165,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		GlobalSkillAccess: globalSkillAccess,
 		OnSuccessTaskID:   onSuccessTaskID,
 		OnFailureTaskID:   onFailureTaskID,
+		TeamID:            teamID,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -170,6 +182,19 @@ func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("delete agent task: %w", err)
 	}
 	return nil
+}
+
+func (r *PostgresRepository) ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.AgentTask, error) {
+	rows, err := r.queries.ListAgentTasksByTeamID(ctx, pgtype.UUID{Bytes: teamID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("list agent tasks by team: %w", err)
+	}
+
+	tasks := make([]domain.AgentTask, len(rows))
+	for i, row := range rows {
+		tasks[i] = *toDomain(row)
+	}
+	return tasks, nil
 }
 
 func (r *PostgresRepository) ListEnabled(ctx context.Context) ([]domain.AgentTask, error) {
@@ -258,6 +283,10 @@ func toDomain(row sqlcgen.AgentTask) *domain.AgentTask {
 	if row.OnFailureTaskID.Valid {
 		id := uuid.UUID(row.OnFailureTaskID.Bytes)
 		task.OnFailureTaskID = &id
+	}
+	if row.TeamID.Valid {
+		id := uuid.UUID(row.TeamID.Bytes)
+		task.TeamID = &id
 	}
 	return task
 }

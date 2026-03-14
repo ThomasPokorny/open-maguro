@@ -238,6 +238,42 @@ func (q *Queries) ListKanbanTasksByStatus(ctx context.Context, status KanbanTask
 	return items, nil
 }
 
+const listKanbanTasksByTeamID = `-- name: ListKanbanTasksByTeamID :many
+SELECT kt.id, kt.title, kt.description, kt.agent_task_id, kt.status, kt.result, kt.created_at, kt.updated_at FROM kanban_tasks kt
+JOIN agent_tasks at ON kt.agent_task_id = at.id
+WHERE at.team_id = $1
+ORDER BY kt.created_at DESC
+`
+
+func (q *Queries) ListKanbanTasksByTeamID(ctx context.Context, teamID pgtype.UUID) ([]KanbanTask, error) {
+	rows, err := q.db.Query(ctx, listKanbanTasksByTeamID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []KanbanTask{}
+	for rows.Next() {
+		var i KanbanTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Description,
+			&i.AgentTaskID,
+			&i.Status,
+			&i.Result,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingKanbanTasksByAgentID = `-- name: ListPendingKanbanTasksByAgentID :many
 SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks
 WHERE agent_task_id = $1 AND status IN ('todo', 'progress')

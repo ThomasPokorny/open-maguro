@@ -25,6 +25,7 @@ type AgentTask struct {
 	GlobalSkillAccess bool
 	OnSuccessTaskID   *uuid.UUID
 	OnFailureTaskID   *uuid.UUID
+	TeamID            *uuid.UUID
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

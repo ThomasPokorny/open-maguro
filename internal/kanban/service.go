@@ -15,6 +15,7 @@ type Repository interface {
 	ListByAgentID(ctx context.Context, agentID uuid.UUID) ([]domain.KanbanTask, error)
 	ListByStatus(ctx context.Context, status domain.KanbanTaskStatus) ([]domain.KanbanTask, error)
 	ListByAgentIDAndStatus(ctx context.Context, agentID uuid.UUID, status domain.KanbanTaskStatus) ([]domain.KanbanTask, error)
+	ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.KanbanTask, error)
 	Update(ctx context.Context, id uuid.UUID, params UpdateRequest, existing *domain.KanbanTask) (*domain.KanbanTask, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -35,11 +36,13 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*domain.KanbanTask
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context, agentID *uuid.UUID, status *string) ([]domain.KanbanTask, error) {
+func (s *Service) List(ctx context.Context, agentID *uuid.UUID, status *string, teamID *uuid.UUID) ([]domain.KanbanTask, error) {
 	var tasks []domain.KanbanTask
 	var err error
 
 	switch {
+	case teamID != nil:
+		tasks, err = s.repo.ListByTeamID(ctx, *teamID)
 	case agentID != nil && status != nil:
 		tasks, err = s.repo.ListByAgentIDAndStatus(ctx, *agentID, domain.KanbanTaskStatus(*status))
 	case agentID != nil:

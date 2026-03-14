@@ -1,6 +1,7 @@
 package agent_task
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ type CreateRequest struct {
 	GlobalSkillAccess *bool      `json:"global_skill_access"`
 	OnSuccessTaskID   *uuid.UUID `json:"on_success_task_id"`
 	OnFailureTaskID   *uuid.UUID `json:"on_failure_task_id"`
+	TeamID            *uuid.UUID `json:"team_id"`
 }
 
 type UpdateRequest struct {
@@ -31,6 +33,24 @@ type UpdateRequest struct {
 	GlobalSkillAccess *bool      `json:"global_skill_access"`
 	OnSuccessTaskID   *uuid.UUID `json:"on_success_task_id"`
 	OnFailureTaskID   *uuid.UUID `json:"on_failure_task_id"`
+	TeamID            *uuid.UUID `json:"team_id"`
+	TeamIDSet         bool       `json:"-"` // true when team_id key was present in JSON (allows explicit null)
+}
+
+func (u *UpdateRequest) UnmarshalJSON(data []byte) error {
+	type Alias UpdateRequest
+	aux := &struct{ *Alias }{Alias: (*Alias)(u)}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["team_id"]; ok {
+		u.TeamIDSet = true
+	}
+	return nil
 }
 
 type Response struct {
@@ -47,6 +67,7 @@ type Response struct {
 	GlobalSkillAccess bool       `json:"global_skill_access"`
 	OnSuccessTaskID   *uuid.UUID `json:"on_success_task_id,omitempty"`
 	OnFailureTaskID   *uuid.UUID `json:"on_failure_task_id,omitempty"`
+	TeamID            *uuid.UUID `json:"team_id,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
@@ -66,6 +87,7 @@ func ToResponse(t *domain.AgentTask) Response {
 		GlobalSkillAccess: t.GlobalSkillAccess,
 		OnSuccessTaskID:   t.OnSuccessTaskID,
 		OnFailureTaskID:   t.OnFailureTaskID,
+		TeamID:            t.TeamID,
 		CreatedAt:         t.CreatedAt,
 		UpdatedAt:         t.UpdatedAt,
 	}

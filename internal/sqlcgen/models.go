@@ -122,6 +122,7 @@ type AgentTask struct {
 	GlobalSkillAccess bool               `json:"global_skill_access"`
 	OnSuccessTaskID   pgtype.UUID        `json:"on_success_task_id"`
 	OnFailureTaskID   pgtype.UUID        `json:"on_failure_task_id"`
+	TeamID            pgtype.UUID        `json:"team_id"`
 }
 
 type KanbanTask struct {
@@ -154,4 +155,13 @@ type TaskExecution struct {
 	CreatedAt              pgtype.Timestamptz `json:"created_at"`
 	TaskName               pgtype.Text        `json:"task_name"`
 	TriggeredByExecutionID pgtype.UUID        `json:"triggered_by_execution_id"`
+}
+
+type Team struct {
+	ID          uuid.UUID          `json:"id"`
+	Title       string             `json:"title"`
+	Description string             `json:"description"`
+	Color       string             `json:"color"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }

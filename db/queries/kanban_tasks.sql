@@ -25,6 +25,12 @@ SELECT * FROM kanban_tasks
 WHERE agent_task_id = $1 AND status = $2
 ORDER BY created_at DESC;
 
+-- name: ListKanbanTasksByTeamID :many
+SELECT kt.* FROM kanban_tasks kt
+JOIN agent_tasks at ON kt.agent_task_id = at.id
+WHERE at.team_id = $1
+ORDER BY kt.created_at DESC;
+
 -- name: ListPendingKanbanTasksByAgentID :many
 SELECT * FROM kanban_tasks
 WHERE agent_task_id = $1 AND status IN ('todo', 'progress')
