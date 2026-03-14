@@ -2,33 +2,32 @@ package kanban
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/sqlcgen"
 )
 
 type PostgresRepository struct {
-	pool    *pgxpool.Pool
+	db      *sql.DB
 	queries *sqlcgen.Queries
 }
 
-func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
+func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{
-		pool:    pool,
-		queries: sqlcgen.New(pool),
+		db:      db,
+		queries: sqlcgen.New(db),
 	}
 }
 
 func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (*domain.KanbanTask, error) {
 	row, err := r.queries.CreateKanbanTask(ctx, sqlcgen.CreateKanbanTaskParams{
+		ID:          uuid.New().String(),
 		Title:       params.Title,
 		Description: params.Description,
-		AgentTaskID: params.AgentTaskID,
+		AgentTaskID: params.AgentTaskID.String(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create kanban task: %w", err)
@@ -37,9 +36,9 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 }
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.KanbanTask, error) {
-	row, err := r.queries.GetKanbanTask(ctx, id)
+	row, err := r.queries.GetKanbanTask(ctx, id.String())
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("kanban task not found: %s", id)
 		}
 		return nil, fmt.Errorf("get kanban task: %w", err)
@@ -56,7 +55,7 @@ func (r *PostgresRepository) List(ctx context.Context) ([]domain.KanbanTask, err
 }
 
 func (r *PostgresRepository) ListByAgentID(ctx context.Context, agentID uuid.UUID) ([]domain.KanbanTask, error) {
-	rows, err := r.queries.ListKanbanTasksByAgentID(ctx, agentID)
+	rows, err := r.queries.ListKanbanTasksByAgentID(ctx, agentID.String())
 	if err != nil {
 		return nil, fmt.Errorf("list kanban tasks by agent: %w", err)
 	}
@@ -64,7 +63,7 @@ func (r *PostgresRepository) ListByAgentID(ctx context.Context, agentID uuid.UUI
 }
 
 func (r *PostgresRepository) ListByStatus(ctx context.Context, status domain.KanbanTaskStatus) ([]domain.KanbanTask, error) {
-	rows, err := r.queries.ListKanbanTasksByStatus(ctx, sqlcgen.KanbanTaskStatus(status))
+	rows, err := r.queries.ListKanbanTasksByStatus(ctx, string(status))
 	if err != nil {
 		return nil, fmt.Errorf("list kanban tasks by status: %w", err)
 	}
@@ -73,8 +72,8 @@ func (r *PostgresRepository) ListByStatus(ctx context.Context, status domain.Kan
 
 func (r *PostgresRepository) ListByAgentIDAndStatus(ctx context.Context, agentID uuid.UUID, status domain.KanbanTaskStatus) ([]domain.KanbanTask, error) {
 	rows, err := r.queries.ListKanbanTasksByAgentIDAndStatus(ctx, sqlcgen.ListKanbanTasksByAgentIDAndStatusParams{
-		AgentTaskID: agentID,
-		Status:      sqlcgen.KanbanTaskStatus(status),
+		AgentTaskID: agentID.String(),
+		Status:      string(status),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list kanban tasks by agent and status: %w", err)
@@ -83,7 +82,7 @@ func (r *PostgresRepository) ListByAgentIDAndStatus(ctx context.Context, agentID
 }
 
 func (r *PostgresRepository) ListByTeamID(ctx context.Context, teamID uuid.UUID) ([]domain.KanbanTask, error) {
-	rows, err := r.queries.ListKanbanTasksByTeamID(ctx, pgtype.UUID{Bytes: teamID, Valid: true})
+	rows, err := r.queries.ListKanbanTasksByTeamID(ctx, sql.NullString{String: teamID.String(), Valid: true})
 	if err != nil {
 		return nil, fmt.Errorf("list kanban tasks by team: %w", err)
 	}
@@ -91,7 +90,7 @@ func (r *PostgresRepository) ListByTeamID(ctx context.Context, teamID uuid.UUID)
 }
 
 func (r *PostgresRepository) ListPendingByAgentID(ctx context.Context, agentID uuid.UUID) ([]domain.KanbanTask, error) {
-	rows, err := r.queries.ListPendingKanbanTasksByAgentID(ctx, agentID)
+	rows, err := r.queries.ListPendingKanbanTasksByAgentID(ctx, agentID.String())
 	if err != nil {
 		return nil, fmt.Errorf("list pending kanban tasks: %w", err)
 	}
@@ -99,7 +98,15 @@ func (r *PostgresRepository) ListPendingByAgentID(ctx context.Context, agentID u
 }
 
 func (r *PostgresRepository) ListDistinctAgentsWithPending(ctx context.Context) ([]uuid.UUID, error) {
-	return r.queries.ListDistinctAgentsWithPendingKanbanTasks(ctx)
+	ids, err := r.queries.ListDistinctAgentsWithPendingKanbanTasks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	uuids := make([]uuid.UUID, len(ids))
+	for i, id := range ids {
+		uuids[i] = uuid.MustParse(id)
+	}
+	return uuids, nil
 }
 
 func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params UpdateRequest, existing *domain.KanbanTask) (*domain.KanbanTask, error) {
@@ -116,21 +123,21 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 		agentTaskID = *params.AgentTaskID
 	}
 
-	result := pgtype.Text{}
+	result := sql.NullString{}
 	if existing.Result != nil {
-		result = pgtype.Text{String: *existing.Result, Valid: true}
+		result = sql.NullString{String: *existing.Result, Valid: true}
 	}
 
 	row, err := r.queries.UpdateKanbanTask(ctx, sqlcgen.UpdateKanbanTaskParams{
-		ID:          id,
+		ID:          id.String(),
 		Title:       title,
 		Description: description,
-		AgentTaskID: agentTaskID,
-		Status:      sqlcgen.KanbanTaskStatus(existing.Status),
+		AgentTaskID: agentTaskID.String(),
+		Status:      string(existing.Status),
 		Result:      result,
 	})
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("kanban task not found: %s", id)
 		}
 		return nil, fmt.Errorf("update kanban task: %w", err)
@@ -139,13 +146,13 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 }
 
 func (r *PostgresRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.KanbanTaskStatus, result *string) (*domain.KanbanTask, error) {
-	resultText := pgtype.Text{}
+	resultText := sql.NullString{}
 	if result != nil {
-		resultText = pgtype.Text{String: *result, Valid: true}
+		resultText = sql.NullString{String: *result, Valid: true}
 	}
 	row, err := r.queries.UpdateKanbanTaskStatus(ctx, sqlcgen.UpdateKanbanTaskStatusParams{
-		ID:     id,
-		Status: sqlcgen.KanbanTaskStatus(status),
+		ID:     id.String(),
+		Status: string(status),
 		Result: resultText,
 	})
 	if err != nil {
@@ -159,18 +166,18 @@ func (r *PostgresRepository) ResetInProgress(ctx context.Context) error {
 }
 
 func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.queries.DeleteKanbanTask(ctx, id)
+	return r.queries.DeleteKanbanTask(ctx, id.String())
 }
 
 func toDomain(row sqlcgen.KanbanTask) *domain.KanbanTask {
 	t := &domain.KanbanTask{
-		ID:          row.ID,
+		ID:          uuid.MustParse(row.ID),
 		Title:       row.Title,
 		Description: row.Description,
-		AgentTaskID: row.AgentTaskID,
+		AgentTaskID: uuid.MustParse(row.AgentTaskID),
 		Status:      domain.KanbanTaskStatus(row.Status),
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
 	}
 	if row.Result.Valid {
 		s := row.Result.String

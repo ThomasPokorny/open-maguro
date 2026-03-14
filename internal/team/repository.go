@@ -2,24 +2,23 @@ package team
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/sqlcgen"
 )
 
 type PostgresRepository struct {
-	pool    *pgxpool.Pool
+	db      *sql.DB
 	queries *sqlcgen.Queries
 }
 
-func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
+func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{
-		pool:    pool,
-		queries: sqlcgen.New(pool),
+		db:      db,
+		queries: sqlcgen.New(db),
 	}
 }
 
@@ -30,6 +29,7 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 	}
 
 	row, err := r.queries.CreateTeam(ctx, sqlcgen.CreateTeamParams{
+		ID:          uuid.New().String(),
 		Title:       params.Title,
 		Description: params.Description,
 		Color:       color,
@@ -41,9 +41,9 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 }
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Team, error) {
-	row, err := r.queries.GetTeam(ctx, id)
+	row, err := r.queries.GetTeam(ctx, id.String())
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("team not found: %s", id)
 		}
 		return nil, fmt.Errorf("get team: %w", err)
@@ -84,13 +84,13 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 	}
 
 	row, err := r.queries.UpdateTeam(ctx, sqlcgen.UpdateTeamParams{
-		ID:          id,
+		ID:          id.String(),
 		Title:       title,
 		Description: description,
 		Color:       color,
 	})
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("team not found: %s", id)
 		}
 		return nil, fmt.Errorf("update team: %w", err)
@@ -99,7 +99,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id uuid.UUID, params Up
 }
 
 func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	if err := r.queries.DeleteTeam(ctx, id); err != nil {
+	if err := r.queries.DeleteTeam(ctx, id.String()); err != nil {
 		return fmt.Errorf("delete team: %w", err)
 	}
 	return nil
@@ -107,11 +107,11 @@ func (r *PostgresRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func toDomain(row sqlcgen.Team) *domain.Team {
 	return &domain.Team{
-		ID:          row.ID,
+		ID:          uuid.MustParse(row.ID),
 		Title:       row.Title,
 		Description: row.Description,
 		Color:       row.Color,
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
 	}
 }

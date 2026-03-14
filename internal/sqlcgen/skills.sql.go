@@ -7,41 +7,45 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"database/sql"
 )
 
 const addAgentSkill = `-- name: AddAgentSkill :exec
 INSERT INTO agent_skills (agent_task_id, skill_id)
-VALUES ($1, $2)
+VALUES (?, ?)
 ON CONFLICT DO NOTHING
 `
 
 type AddAgentSkillParams struct {
-	AgentTaskID uuid.UUID `json:"agent_task_id"`
-	SkillID     uuid.UUID `json:"skill_id"`
+	AgentTaskID string `json:"agent_task_id"`
+	SkillID     string `json:"skill_id"`
 }
 
 func (q *Queries) AddAgentSkill(ctx context.Context, arg AddAgentSkillParams) error {
-	_, err := q.db.Exec(ctx, addAgentSkill, arg.AgentTaskID, arg.SkillID)
+	_, err := q.db.ExecContext(ctx, addAgentSkill, arg.AgentTaskID, arg.SkillID)
 	return err
 }
 
 const createSkill = `-- name: CreateSkill :one
-INSERT INTO skills (title, content, environment_secrets)
-VALUES ($1, $2, $3)
+INSERT INTO skills (id, title, content, environment_secrets)
+VALUES (?, ?, ?, ?)
 RETURNING id, title, content, created_at, updated_at, environment_secrets
 `
 
 type CreateSkillParams struct {
-	Title              string      `json:"title"`
-	Content            string      `json:"content"`
-	EnvironmentSecrets pgtype.Text `json:"environment_secrets"`
+	ID                 string         `json:"id"`
+	Title              string         `json:"title"`
+	Content            string         `json:"content"`
+	EnvironmentSecrets sql.NullString `json:"environment_secrets"`
 }
 
 func (q *Queries) CreateSkill(ctx context.Context, arg CreateSkillParams) (Skill, error) {
-	row := q.db.QueryRow(ctx, createSkill, arg.Title, arg.Content, arg.EnvironmentSecrets)
+	row := q.db.QueryRowContext(ctx, createSkill,
+		arg.ID,
+		arg.Title,
+		arg.Content,
+		arg.EnvironmentSecrets,
+	)
 	var i Skill
 	err := row.Scan(
 		&i.ID,
@@ -55,20 +59,20 @@ func (q *Queries) CreateSkill(ctx context.Context, arg CreateSkillParams) (Skill
 }
 
 const deleteSkill = `-- name: DeleteSkill :exec
-DELETE FROM skills WHERE id = $1
+DELETE FROM skills WHERE id = ?
 `
 
-func (q *Queries) DeleteSkill(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteSkill, id)
+func (q *Queries) DeleteSkill(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteSkill, id)
 	return err
 }
 
 const getSkill = `-- name: GetSkill :one
-SELECT id, title, content, created_at, updated_at, environment_secrets FROM skills WHERE id = $1
+SELECT id, title, content, created_at, updated_at, environment_secrets FROM skills WHERE id = ?
 `
 
-func (q *Queries) GetSkill(ctx context.Context, id uuid.UUID) (Skill, error) {
-	row := q.db.QueryRow(ctx, getSkill, id)
+func (q *Queries) GetSkill(ctx context.Context, id string) (Skill, error) {
+	row := q.db.QueryRowContext(ctx, getSkill, id)
 	var i Skill
 	err := row.Scan(
 		&i.ID,
@@ -86,7 +90,7 @@ SELECT id, title, content, created_at, updated_at, environment_secrets FROM skil
 `
 
 func (q *Queries) ListSkills(ctx context.Context) ([]Skill, error) {
-	rows, err := q.db.Query(ctx, listSkills)
+	rows, err := q.db.QueryContext(ctx, listSkills)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +109,9 @@ func (q *Queries) ListSkills(ctx context.Context) ([]Skill, error) {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -115,12 +122,12 @@ func (q *Queries) ListSkills(ctx context.Context) ([]Skill, error) {
 const listSkillsByAgentTaskID = `-- name: ListSkillsByAgentTaskID :many
 SELECT s.id, s.title, s.content, s.created_at, s.updated_at, s.environment_secrets FROM skills s
 JOIN agent_skills asj ON s.id = asj.skill_id
-WHERE asj.agent_task_id = $1
+WHERE asj.agent_task_id = ?
 ORDER BY s.title
 `
 
-func (q *Queries) ListSkillsByAgentTaskID(ctx context.Context, agentTaskID uuid.UUID) ([]Skill, error) {
-	rows, err := q.db.Query(ctx, listSkillsByAgentTaskID, agentTaskID)
+func (q *Queries) ListSkillsByAgentTaskID(ctx context.Context, agentTaskID string) ([]Skill, error) {
+	rows, err := q.db.QueryContext(ctx, listSkillsByAgentTaskID, agentTaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +147,9 @@ func (q *Queries) ListSkillsByAgentTaskID(ctx context.Context, agentTaskID uuid.
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -148,42 +158,42 @@ func (q *Queries) ListSkillsByAgentTaskID(ctx context.Context, agentTaskID uuid.
 
 const removeAgentSkill = `-- name: RemoveAgentSkill :exec
 DELETE FROM agent_skills
-WHERE agent_task_id = $1 AND skill_id = $2
+WHERE agent_task_id = ? AND skill_id = ?
 `
 
 type RemoveAgentSkillParams struct {
-	AgentTaskID uuid.UUID `json:"agent_task_id"`
-	SkillID     uuid.UUID `json:"skill_id"`
+	AgentTaskID string `json:"agent_task_id"`
+	SkillID     string `json:"skill_id"`
 }
 
 func (q *Queries) RemoveAgentSkill(ctx context.Context, arg RemoveAgentSkillParams) error {
-	_, err := q.db.Exec(ctx, removeAgentSkill, arg.AgentTaskID, arg.SkillID)
+	_, err := q.db.ExecContext(ctx, removeAgentSkill, arg.AgentTaskID, arg.SkillID)
 	return err
 }
 
 const updateSkill = `-- name: UpdateSkill :one
 UPDATE skills
-SET title = $2,
-    content = $3,
-    environment_secrets = $4,
-    updated_at = now()
-WHERE id = $1
+SET title = ?,
+    content = ?,
+    environment_secrets = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING id, title, content, created_at, updated_at, environment_secrets
 `
 
 type UpdateSkillParams struct {
-	ID                 uuid.UUID   `json:"id"`
-	Title              string      `json:"title"`
-	Content            string      `json:"content"`
-	EnvironmentSecrets pgtype.Text `json:"environment_secrets"`
+	Title              string         `json:"title"`
+	Content            string         `json:"content"`
+	EnvironmentSecrets sql.NullString `json:"environment_secrets"`
+	ID                 string         `json:"id"`
 }
 
 func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill, error) {
-	row := q.db.QueryRow(ctx, updateSkill,
-		arg.ID,
+	row := q.db.QueryRowContext(ctx, updateSkill,
 		arg.Title,
 		arg.Content,
 		arg.EnvironmentSecrets,
+		arg.ID,
 	)
 	var i Skill
 	err := row.Scan(

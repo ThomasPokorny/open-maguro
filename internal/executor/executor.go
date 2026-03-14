@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"open-maguro/internal/domain"
 	"open-maguro/internal/task_execution"
 )
@@ -72,11 +71,10 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 
 	// Update to running
 	now := time.Now()
-	startedAt := pgtype.Timestamptz{Time: now, Valid: true}
 	_, err = e.repo.UpdateStatus(ctx, task_execution.UpdateStatusParams{
 		ID:        execution.ID,
 		Status:    domain.StatusRunning,
-		StartedAt: startedAt,
+		StartedAt: &now,
 	})
 	if err != nil {
 		execLogger.Error("failed to update execution to running", "error", err)
@@ -142,11 +140,11 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 	stdout, stderr, runErr := e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir, envSecrets)
 
 	// Record result
-	finishedAt := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	finishedAt := time.Now()
 	updateParams := task_execution.UpdateStatusParams{
 		ID:         execution.ID,
-		StartedAt:  startedAt,
-		FinishedAt: finishedAt,
+		StartedAt:  &now,
+		FinishedAt: &finishedAt,
 	}
 
 	var finalStatus domain.ExecutionStatus
@@ -158,16 +156,16 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 		if errMsg == "" {
 			errMsg = runErr.Error()
 		}
-		updateParams.Error = pgtype.Text{String: errMsg, Valid: true}
+		updateParams.Error = &errMsg
 		if stdout != "" {
-			updateParams.Summary = pgtype.Text{String: stdout, Valid: true}
+			updateParams.Summary = &stdout
 		}
 		execLogger.Error("task execution failed", "error", runErr)
 
 	default:
 		finalStatus = domain.StatusSuccess
 		updateParams.Status = domain.StatusSuccess
-		updateParams.Summary = pgtype.Text{String: stdout, Valid: true}
+		updateParams.Summary = &stdout
 		execLogger.Info("task execution succeeded")
 	}
 

@@ -10,46 +10,53 @@ OpenMaguro🐟 v0.1 — swim upstream, think downstream.
 
 Scheduled Claude Code SDK agent task orchestrator. Define agent tasks with cron schedules and track their execution history via a REST API. Includes a React dashboard for managing agents, skills, kanban tasks, and teams.
 
+**Fully self-contained** — single binary, embedded SQLite database, no external dependencies. Just run it.
+
 ## Quick Start
 
 ```bash
-# Start Postgres
-docker compose up -d
-
-# Copy env and adjust if needed
-cp .env.example .env
-
-# Build and run (API + dashboard on single port)
-make build
+# Build and run
+go build -o maguro ./cmd/api
 ./maguro
 ```
 
-Open `http://localhost:8080` — the dashboard and API are served from the same port.
+That's it. Open `http://localhost:8080` — the dashboard and API are served from the same port.
+
+The SQLite database is created automatically at `~/.maguro/maguro.db`. Migrations run on startup. No Docker, no Postgres, no `.env` file needed.
+
+### Prerequisites
+
+- **Go 1.24+** (to build)
+- **Claude CLI** (`claude`) installed and on PATH (for agent execution)
 
 ### Development Mode
 
 ```bash
 # Terminal 1: API server
-make dev
+go run ./cmd/api
 
 # Terminal 2: Frontend with hot reload (proxies API to :8080)
-make dev-frontend
+cd maguro-dashboard && npm run dev
 ```
 
 The Vite dev server runs on `:5173` and proxies `/api` requests to the Go backend on `:8080`.
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `DATABASE_URL` | Yes | — | Postgres connection string |
-| `PORT` | No | `8080` | HTTP server port |
-| `LOG_LEVEL` | No | `info` | Logging level |
-| `MCP_CONFIG_PATH` | No | — | Path to global MCP config file (mcp.json) |
-| `ALLOWED_TOOLS` | No | `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*` | Comma-separated tool patterns auto-approved for agents |
-| `WORKSPACE_ROOT` | No | `~/.maguro/workspaces` | Root directory for per-agent workspaces |
-| `EXECUTION_RETENTION_DAYS` | No | `30` | Days to keep execution logs (daily cleanup purges older) |
-| `MAGURO_SECRET_KEY` | No | auto-generated | Hex-encoded 32-byte AES-256 key for encrypting skill secrets |
+All settings have sensible defaults — no configuration required to get started.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `~/.maguro/maguro.db` | Path to SQLite database file |
+| `PORT` | `8080` | HTTP server port |
+| `LOG_LEVEL` | `info` | Logging level |
+| `MCP_CONFIG_PATH` | — | Path to global MCP config file (mcp.json) |
+| `ALLOWED_TOOLS` | `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*` | Comma-separated tool patterns auto-approved for agents |
+| `WORKSPACE_ROOT` | `~/.maguro/workspaces` | Root directory for per-agent workspaces |
+| `EXECUTION_RETENTION_DAYS` | `30` | Days to keep execution logs (daily cleanup purges older) |
+| `MAGURO_SECRET_KEY` | auto-generated | Hex-encoded 32-byte AES-256 key for encrypting skill secrets |
+
+Override any of these via environment variables or an optional `.env` file.
 
 ## API Endpoints
 
@@ -583,9 +590,9 @@ Response `400`: Missing or invalid `older_than` parameter.
 
 ### Backend
 - **Go 1.24+** with Chi router
-- **PostgreSQL 17** with pgx/v5 driver
+- **SQLite** (embedded, via `modernc.org/sqlite` — pure Go, no CGO)
 - **sqlc** for type-safe SQL query generation
-- **Goose** for database migrations
+- **Goose** for database migrations (run automatically on startup)
 
 ### Frontend (`maguro-dashboard/`)
 - **React 18** + TypeScript
@@ -601,7 +608,7 @@ Response `400`: Missing or invalid `older_than` parameter.
 sqlc generate
 
 # Build backend
-go build ./...
+go build -o maguro ./cmd/api
 
 # Install frontend dependencies
 cd maguro-dashboard && npm install
@@ -611,6 +618,18 @@ cd maguro-dashboard && npm run dev
 ```
 
 Migrations run automatically on server startup (embedded via `go:embed` + goose).
+
+### Data Directory
+
+All data lives under `~/.maguro/`:
+
+```
+~/.maguro/
+├── maguro.db          # SQLite database
+├── .secret_key        # Auto-generated encryption key
+└── workspaces/        # Per-agent workspace directories
+    └── {agent-id}/
+```
 
 ## Project Structure
 
@@ -629,7 +648,7 @@ open-maguro/
 ## Testing
 
 ### Backend
-E2e API tests use [testcontainers-go](https://golang.testcontainers.org/) to spin up a real Postgres instance per test. Works with both Podman and Docker.
+E2e API tests use a temporary SQLite database per test — no external dependencies needed.
 
 ```bash
 # Run all tests
@@ -638,8 +657,6 @@ go test ./internal/tests/... -v
 # Run without cache
 go test ./internal/tests/... -v -count=1
 ```
-
-Requires Podman or Docker to be running. On macOS with Podman, the socket is auto-detected.
 
 ### Frontend
 

@@ -4,18 +4,20 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	_ "modernc.org/sqlite"
 )
 
-func runGooseMigrations(connStr string) error {
-	db, err := sql.Open("pgx", connStr)
+func runGooseMigrations(dbPath string) error {
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("open db for migrations: %w", err)
 	}
 	defer db.Close()
 
-	if err := goose.SetDialect("postgres"); err != nil {
+	db.Exec("PRAGMA foreign_keys=ON")
+
+	if err := goose.SetDialect("sqlite3"); err != nil {
 		return fmt.Errorf("set goose dialect: %w", err)
 	}
 

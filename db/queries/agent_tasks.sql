@@ -1,5 +1,5 @@
 -- name: GetAgentTask :one
-SELECT * FROM agent_tasks WHERE id = $1;
+SELECT * FROM agent_tasks WHERE id = ?;
 
 -- name: ListAgentTasks :many
 SELECT * FROM agent_tasks ORDER BY created_at DESC;
@@ -26,35 +26,35 @@ ORDER BY run_at ASC;
 
 -- name: ListAgentTasksByTeamID :many
 SELECT * FROM agent_tasks
-WHERE team_id = $1
+WHERE team_id = ?
 ORDER BY created_at DESC;
 
 -- name: CreateAgentTask :one
-INSERT INTO agent_tasks (name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id, task_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'cron')
+INSERT INTO agent_tasks (id, name, cron_expression, prompt, enabled, mcp_config, allowed_tools, system_agent, global_skill_access, on_success_task_id, on_failure_task_id, team_id, task_type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cron')
 RETURNING *;
 
 -- name: CreateScheduledTask :one
-INSERT INTO agent_tasks (name, prompt, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'one_time')
+INSERT INTO agent_tasks (id, name, prompt, run_at, mcp_config, allowed_tools, system_agent, global_skill_access, task_type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'one_time')
 RETURNING *;
 
 -- name: UpdateAgentTask :one
 UPDATE agent_tasks
-SET name = $2,
-    cron_expression = $3,
-    prompt = $4,
-    enabled = $5,
-    mcp_config = $6,
-    allowed_tools = $7,
-    system_agent = $8,
-    global_skill_access = $9,
-    on_success_task_id = $10,
-    on_failure_task_id = $11,
-    team_id = $12,
-    updated_at = now()
-WHERE id = $1
+SET name = ?,
+    cron_expression = ?,
+    prompt = ?,
+    enabled = ?,
+    mcp_config = ?,
+    allowed_tools = ?,
+    system_agent = ?,
+    global_skill_access = ?,
+    on_success_task_id = ?,
+    on_failure_task_id = ?,
+    team_id = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING *;
 
 -- name: DeleteAgentTask :exec
-DELETE FROM agent_tasks WHERE id = $1;
+DELETE FROM agent_tasks WHERE id = ?;

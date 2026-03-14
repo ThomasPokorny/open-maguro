@@ -7,25 +7,29 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"database/sql"
 )
 
 const createKanbanTask = `-- name: CreateKanbanTask :one
-INSERT INTO kanban_tasks (title, description, agent_task_id)
-VALUES ($1, $2, $3)
+INSERT INTO kanban_tasks (id, title, description, agent_task_id)
+VALUES (?, ?, ?, ?)
 RETURNING id, title, description, agent_task_id, status, result, created_at, updated_at
 `
 
 type CreateKanbanTaskParams struct {
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	AgentTaskID uuid.UUID `json:"agent_task_id"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	AgentTaskID string `json:"agent_task_id"`
 }
 
 func (q *Queries) CreateKanbanTask(ctx context.Context, arg CreateKanbanTaskParams) (KanbanTask, error) {
-	row := q.db.QueryRow(ctx, createKanbanTask, arg.Title, arg.Description, arg.AgentTaskID)
+	row := q.db.QueryRowContext(ctx, createKanbanTask,
+		arg.ID,
+		arg.Title,
+		arg.Description,
+		arg.AgentTaskID,
+	)
 	var i KanbanTask
 	err := row.Scan(
 		&i.ID,
@@ -41,20 +45,20 @@ func (q *Queries) CreateKanbanTask(ctx context.Context, arg CreateKanbanTaskPara
 }
 
 const deleteKanbanTask = `-- name: DeleteKanbanTask :exec
-DELETE FROM kanban_tasks WHERE id = $1
+DELETE FROM kanban_tasks WHERE id = ?
 `
 
-func (q *Queries) DeleteKanbanTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteKanbanTask, id)
+func (q *Queries) DeleteKanbanTask(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteKanbanTask, id)
 	return err
 }
 
 const getKanbanTask = `-- name: GetKanbanTask :one
-SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks WHERE id = $1
+SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks WHERE id = ?
 `
 
-func (q *Queries) GetKanbanTask(ctx context.Context, id uuid.UUID) (KanbanTask, error) {
-	row := q.db.QueryRow(ctx, getKanbanTask, id)
+func (q *Queries) GetKanbanTask(ctx context.Context, id string) (KanbanTask, error) {
+	row := q.db.QueryRowContext(ctx, getKanbanTask, id)
 	var i KanbanTask
 	err := row.Scan(
 		&i.ID,
@@ -74,19 +78,22 @@ SELECT DISTINCT agent_task_id FROM kanban_tasks
 WHERE status IN ('todo', 'progress')
 `
 
-func (q *Queries) ListDistinctAgentsWithPendingKanbanTasks(ctx context.Context) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listDistinctAgentsWithPendingKanbanTasks)
+func (q *Queries) ListDistinctAgentsWithPendingKanbanTasks(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listDistinctAgentsWithPendingKanbanTasks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []uuid.UUID{}
+	items := []string{}
 	for rows.Next() {
-		var agent_task_id uuid.UUID
+		var agent_task_id string
 		if err := rows.Scan(&agent_task_id); err != nil {
 			return nil, err
 		}
 		items = append(items, agent_task_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -100,7 +107,7 @@ ORDER BY created_at DESC
 `
 
 func (q *Queries) ListKanbanTasks(ctx context.Context) ([]KanbanTask, error) {
-	rows, err := q.db.Query(ctx, listKanbanTasks)
+	rows, err := q.db.QueryContext(ctx, listKanbanTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +128,9 @@ func (q *Queries) ListKanbanTasks(ctx context.Context) ([]KanbanTask, error) {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -130,12 +140,12 @@ func (q *Queries) ListKanbanTasks(ctx context.Context) ([]KanbanTask, error) {
 
 const listKanbanTasksByAgentID = `-- name: ListKanbanTasksByAgentID :many
 SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks
-WHERE agent_task_id = $1
+WHERE agent_task_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListKanbanTasksByAgentID(ctx context.Context, agentTaskID uuid.UUID) ([]KanbanTask, error) {
-	rows, err := q.db.Query(ctx, listKanbanTasksByAgentID, agentTaskID)
+func (q *Queries) ListKanbanTasksByAgentID(ctx context.Context, agentTaskID string) ([]KanbanTask, error) {
+	rows, err := q.db.QueryContext(ctx, listKanbanTasksByAgentID, agentTaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +166,9 @@ func (q *Queries) ListKanbanTasksByAgentID(ctx context.Context, agentTaskID uuid
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -165,17 +178,17 @@ func (q *Queries) ListKanbanTasksByAgentID(ctx context.Context, agentTaskID uuid
 
 const listKanbanTasksByAgentIDAndStatus = `-- name: ListKanbanTasksByAgentIDAndStatus :many
 SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks
-WHERE agent_task_id = $1 AND status = $2
+WHERE agent_task_id = ? AND status = ?
 ORDER BY created_at DESC
 `
 
 type ListKanbanTasksByAgentIDAndStatusParams struct {
-	AgentTaskID uuid.UUID        `json:"agent_task_id"`
-	Status      KanbanTaskStatus `json:"status"`
+	AgentTaskID string `json:"agent_task_id"`
+	Status      string `json:"status"`
 }
 
 func (q *Queries) ListKanbanTasksByAgentIDAndStatus(ctx context.Context, arg ListKanbanTasksByAgentIDAndStatusParams) ([]KanbanTask, error) {
-	rows, err := q.db.Query(ctx, listKanbanTasksByAgentIDAndStatus, arg.AgentTaskID, arg.Status)
+	rows, err := q.db.QueryContext(ctx, listKanbanTasksByAgentIDAndStatus, arg.AgentTaskID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -196,6 +209,9 @@ func (q *Queries) ListKanbanTasksByAgentIDAndStatus(ctx context.Context, arg Lis
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -205,12 +221,12 @@ func (q *Queries) ListKanbanTasksByAgentIDAndStatus(ctx context.Context, arg Lis
 
 const listKanbanTasksByStatus = `-- name: ListKanbanTasksByStatus :many
 SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks
-WHERE status = $1
+WHERE status = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListKanbanTasksByStatus(ctx context.Context, status KanbanTaskStatus) ([]KanbanTask, error) {
-	rows, err := q.db.Query(ctx, listKanbanTasksByStatus, status)
+func (q *Queries) ListKanbanTasksByStatus(ctx context.Context, status string) ([]KanbanTask, error) {
+	rows, err := q.db.QueryContext(ctx, listKanbanTasksByStatus, status)
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +247,9 @@ func (q *Queries) ListKanbanTasksByStatus(ctx context.Context, status KanbanTask
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -241,12 +260,12 @@ func (q *Queries) ListKanbanTasksByStatus(ctx context.Context, status KanbanTask
 const listKanbanTasksByTeamID = `-- name: ListKanbanTasksByTeamID :many
 SELECT kt.id, kt.title, kt.description, kt.agent_task_id, kt.status, kt.result, kt.created_at, kt.updated_at FROM kanban_tasks kt
 JOIN agent_tasks at ON kt.agent_task_id = at.id
-WHERE at.team_id = $1
+WHERE at.team_id = ?
 ORDER BY kt.created_at DESC
 `
 
-func (q *Queries) ListKanbanTasksByTeamID(ctx context.Context, teamID pgtype.UUID) ([]KanbanTask, error) {
-	rows, err := q.db.Query(ctx, listKanbanTasksByTeamID, teamID)
+func (q *Queries) ListKanbanTasksByTeamID(ctx context.Context, teamID sql.NullString) ([]KanbanTask, error) {
+	rows, err := q.db.QueryContext(ctx, listKanbanTasksByTeamID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +286,9 @@ func (q *Queries) ListKanbanTasksByTeamID(ctx context.Context, teamID pgtype.UUI
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -276,12 +298,12 @@ func (q *Queries) ListKanbanTasksByTeamID(ctx context.Context, teamID pgtype.UUI
 
 const listPendingKanbanTasksByAgentID = `-- name: ListPendingKanbanTasksByAgentID :many
 SELECT id, title, description, agent_task_id, status, result, created_at, updated_at FROM kanban_tasks
-WHERE agent_task_id = $1 AND status IN ('todo', 'progress')
+WHERE agent_task_id = ? AND status IN ('todo', 'progress')
 ORDER BY created_at ASC
 `
 
-func (q *Queries) ListPendingKanbanTasksByAgentID(ctx context.Context, agentTaskID uuid.UUID) ([]KanbanTask, error) {
-	rows, err := q.db.Query(ctx, listPendingKanbanTasksByAgentID, agentTaskID)
+func (q *Queries) ListPendingKanbanTasksByAgentID(ctx context.Context, agentTaskID string) ([]KanbanTask, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingKanbanTasksByAgentID, agentTaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +325,9 @@ func (q *Queries) ListPendingKanbanTasksByAgentID(ctx context.Context, agentTask
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -310,43 +335,43 @@ func (q *Queries) ListPendingKanbanTasksByAgentID(ctx context.Context, agentTask
 }
 
 const resetInProgressKanbanTasks = `-- name: ResetInProgressKanbanTasks :exec
-UPDATE kanban_tasks SET status = 'todo', updated_at = now() WHERE status = 'progress'
+UPDATE kanban_tasks SET status = 'todo', updated_at = datetime('now') WHERE status = 'progress'
 `
 
 func (q *Queries) ResetInProgressKanbanTasks(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, resetInProgressKanbanTasks)
+	_, err := q.db.ExecContext(ctx, resetInProgressKanbanTasks)
 	return err
 }
 
 const updateKanbanTask = `-- name: UpdateKanbanTask :one
 UPDATE kanban_tasks
-SET title = $2,
-    description = $3,
-    agent_task_id = $4,
-    status = $5,
-    result = $6,
-    updated_at = now()
-WHERE id = $1
+SET title = ?,
+    description = ?,
+    agent_task_id = ?,
+    status = ?,
+    result = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING id, title, description, agent_task_id, status, result, created_at, updated_at
 `
 
 type UpdateKanbanTaskParams struct {
-	ID          uuid.UUID        `json:"id"`
-	Title       string           `json:"title"`
-	Description string           `json:"description"`
-	AgentTaskID uuid.UUID        `json:"agent_task_id"`
-	Status      KanbanTaskStatus `json:"status"`
-	Result      pgtype.Text      `json:"result"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	AgentTaskID string         `json:"agent_task_id"`
+	Status      string         `json:"status"`
+	Result      sql.NullString `json:"result"`
+	ID          string         `json:"id"`
 }
 
 func (q *Queries) UpdateKanbanTask(ctx context.Context, arg UpdateKanbanTaskParams) (KanbanTask, error) {
-	row := q.db.QueryRow(ctx, updateKanbanTask,
-		arg.ID,
+	row := q.db.QueryRowContext(ctx, updateKanbanTask,
 		arg.Title,
 		arg.Description,
 		arg.AgentTaskID,
 		arg.Status,
 		arg.Result,
+		arg.ID,
 	)
 	var i KanbanTask
 	err := row.Scan(
@@ -364,21 +389,21 @@ func (q *Queries) UpdateKanbanTask(ctx context.Context, arg UpdateKanbanTaskPara
 
 const updateKanbanTaskStatus = `-- name: UpdateKanbanTaskStatus :one
 UPDATE kanban_tasks
-SET status = $2,
-    result = $3,
-    updated_at = now()
-WHERE id = $1
+SET status = ?,
+    result = ?,
+    updated_at = datetime('now')
+WHERE id = ?
 RETURNING id, title, description, agent_task_id, status, result, created_at, updated_at
 `
 
 type UpdateKanbanTaskStatusParams struct {
-	ID     uuid.UUID        `json:"id"`
-	Status KanbanTaskStatus `json:"status"`
-	Result pgtype.Text      `json:"result"`
+	Status string         `json:"status"`
+	Result sql.NullString `json:"result"`
+	ID     string         `json:"id"`
 }
 
 func (q *Queries) UpdateKanbanTaskStatus(ctx context.Context, arg UpdateKanbanTaskStatusParams) (KanbanTask, error) {
-	row := q.db.QueryRow(ctx, updateKanbanTaskStatus, arg.ID, arg.Status, arg.Result)
+	row := q.db.QueryRowContext(ctx, updateKanbanTaskStatus, arg.Status, arg.Result, arg.ID)
 	var i KanbanTask
 	err := row.Scan(
 		&i.ID,

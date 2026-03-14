@@ -5,164 +5,72 @@
 package sqlcgen
 
 import (
-	"database/sql/driver"
-	"fmt"
-
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"database/sql"
+	"time"
 )
-
-type ExecutionStatus string
-
-const (
-	ExecutionStatusPending ExecutionStatus = "pending"
-	ExecutionStatusRunning ExecutionStatus = "running"
-	ExecutionStatusSuccess ExecutionStatus = "success"
-	ExecutionStatusFailure ExecutionStatus = "failure"
-	ExecutionStatusTimeout ExecutionStatus = "timeout"
-)
-
-func (e *ExecutionStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ExecutionStatus(s)
-	case string:
-		*e = ExecutionStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ExecutionStatus: %T", src)
-	}
-	return nil
-}
-
-type NullExecutionStatus struct {
-	ExecutionStatus ExecutionStatus `json:"execution_status"`
-	Valid           bool            `json:"valid"` // Valid is true if ExecutionStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullExecutionStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.ExecutionStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ExecutionStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullExecutionStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ExecutionStatus), nil
-}
-
-type KanbanTaskStatus string
-
-const (
-	KanbanTaskStatusTodo     KanbanTaskStatus = "todo"
-	KanbanTaskStatusProgress KanbanTaskStatus = "progress"
-	KanbanTaskStatusDone     KanbanTaskStatus = "done"
-	KanbanTaskStatusFailed   KanbanTaskStatus = "failed"
-)
-
-func (e *KanbanTaskStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = KanbanTaskStatus(s)
-	case string:
-		*e = KanbanTaskStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for KanbanTaskStatus: %T", src)
-	}
-	return nil
-}
-
-type NullKanbanTaskStatus struct {
-	KanbanTaskStatus KanbanTaskStatus `json:"kanban_task_status"`
-	Valid            bool             `json:"valid"` // Valid is true if KanbanTaskStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullKanbanTaskStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.KanbanTaskStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.KanbanTaskStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullKanbanTaskStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.KanbanTaskStatus), nil
-}
 
 type AgentSkill struct {
-	AgentTaskID uuid.UUID `json:"agent_task_id"`
-	SkillID     uuid.UUID `json:"skill_id"`
+	AgentTaskID string `json:"agent_task_id"`
+	SkillID     string `json:"skill_id"`
 }
 
 type AgentTask struct {
-	ID                uuid.UUID          `json:"id"`
-	Name              string             `json:"name"`
-	CronExpression    pgtype.Text        `json:"cron_expression"`
-	Prompt            string             `json:"prompt"`
-	Enabled           bool               `json:"enabled"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	TaskType          string             `json:"task_type"`
-	RunAt             pgtype.Timestamptz `json:"run_at"`
-	McpConfig         pgtype.Text        `json:"mcp_config"`
-	AllowedTools      pgtype.Text        `json:"allowed_tools"`
-	SystemAgent       bool               `json:"system_agent"`
-	GlobalSkillAccess bool               `json:"global_skill_access"`
-	OnSuccessTaskID   pgtype.UUID        `json:"on_success_task_id"`
-	OnFailureTaskID   pgtype.UUID        `json:"on_failure_task_id"`
-	TeamID            pgtype.UUID        `json:"team_id"`
+	ID                string         `json:"id"`
+	Name              string         `json:"name"`
+	CronExpression    sql.NullString `json:"cron_expression"`
+	Prompt            string         `json:"prompt"`
+	Enabled           bool           `json:"enabled"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	TaskType          string         `json:"task_type"`
+	RunAt             sql.NullTime   `json:"run_at"`
+	McpConfig         sql.NullString `json:"mcp_config"`
+	AllowedTools      sql.NullString `json:"allowed_tools"`
+	SystemAgent       bool           `json:"system_agent"`
+	GlobalSkillAccess bool           `json:"global_skill_access"`
+	OnSuccessTaskID   sql.NullString `json:"on_success_task_id"`
+	OnFailureTaskID   sql.NullString `json:"on_failure_task_id"`
+	TeamID            sql.NullString `json:"team_id"`
 }
 
 type KanbanTask struct {
-	ID          uuid.UUID          `json:"id"`
-	Title       string             `json:"title"`
-	Description string             `json:"description"`
-	AgentTaskID uuid.UUID          `json:"agent_task_id"`
-	Status      KanbanTaskStatus   `json:"status"`
-	Result      pgtype.Text        `json:"result"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	AgentTaskID string         `json:"agent_task_id"`
+	Status      string         `json:"status"`
+	Result      sql.NullString `json:"result"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type Skill struct {
-	ID                 uuid.UUID          `json:"id"`
-	Title              string             `json:"title"`
-	Content            string             `json:"content"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	EnvironmentSecrets pgtype.Text        `json:"environment_secrets"`
+	ID                 string         `json:"id"`
+	Title              string         `json:"title"`
+	Content            string         `json:"content"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	EnvironmentSecrets sql.NullString `json:"environment_secrets"`
 }
 
 type TaskExecution struct {
-	ID                     uuid.UUID          `json:"id"`
-	AgentTaskID            pgtype.UUID        `json:"agent_task_id"`
-	Status                 ExecutionStatus    `json:"status"`
-	StartedAt              pgtype.Timestamptz `json:"started_at"`
-	FinishedAt             pgtype.Timestamptz `json:"finished_at"`
-	Summary                pgtype.Text        `json:"summary"`
-	Error                  pgtype.Text        `json:"error"`
-	CreatedAt              pgtype.Timestamptz `json:"created_at"`
-	TaskName               pgtype.Text        `json:"task_name"`
-	TriggeredByExecutionID pgtype.UUID        `json:"triggered_by_execution_id"`
+	ID                     string         `json:"id"`
+	AgentTaskID            sql.NullString `json:"agent_task_id"`
+	Status                 string         `json:"status"`
+	StartedAt              sql.NullTime   `json:"started_at"`
+	FinishedAt             sql.NullTime   `json:"finished_at"`
+	Summary                sql.NullString `json:"summary"`
+	Error                  sql.NullString `json:"error"`
+	CreatedAt              time.Time      `json:"created_at"`
+	TaskName               sql.NullString `json:"task_name"`
+	TriggeredByExecutionID sql.NullString `json:"triggered_by_execution_id"`
 }
 
 type Team struct {
-	ID          uuid.UUID          `json:"id"`
-	Title       string             `json:"title"`
-	Description string             `json:"description"`
-	Color       string             `json:"color"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Color       string    `json:"color"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
