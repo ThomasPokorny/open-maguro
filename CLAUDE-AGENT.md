@@ -161,6 +161,13 @@ To give an agent access to **all** skills, set `global_skill_access: true` on th
 
 Every agent has a persistent workspace directory at `~/.maguro/workspaces/{agent-id}/`. The agent's claude CLI runs with this as its working directory, and the system prompt informs the agent about it. Files written there persist between runs.
 
+```bash
+# Open an agent's workspace in the file explorer
+curl -X POST http://localhost:8080/api/v1/agent-tasks/{id}/open-workspace
+```
+
+Returns `{"path": "/absolute/path/to/workspace"}` and opens Finder/Explorer.
+
 ### Kanban Tasks
 
 Assign work items to agents via a kanban-style queue. Each agent processes tasks one at a time, maintaining a `work-log.md` in its workspace.

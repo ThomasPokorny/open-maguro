@@ -119,6 +119,21 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 	return s.repo.Update(ctx, id, merged)
 }
 
+func (s *Service) WorkspacePath(ctx context.Context, id uuid.UUID) (string, error) {
+	task, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if s.workspaceRoot == "" {
+		return "", fmt.Errorf("workspace root not configured")
+	}
+	dir := filepath.Join(s.workspaceRoot, task.ID.String())
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return "", fmt.Errorf("workspace directory does not exist")
+	}
+	return dir, nil
+}
+
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err

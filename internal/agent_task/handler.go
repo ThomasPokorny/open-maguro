@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -61,6 +63,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 		r.Patch("/{id}", h.Update)
 		r.Delete("/{id}", h.Delete)
 		r.Post("/{id}/run", h.Run)
+		r.Post("/{id}/open-workspace", h.OpenWorkspace)
 	})
 }
 
@@ -181,6 +184,46 @@ func (h *Handler) Run(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("agent task run triggered", "task_id", task.ID, "task_name", task.Name)
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+func (h *Handler) OpenWorkspace(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	dir, err := h.service.WorkspacePath(r.Context(), id)
+	if err != nil {
+		if strings.Contains(err.Error(), "not configured") || strings.Contains(err.Error(), "does not exist") {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusNotFound, "agent task not found")
+		return
+	}
+
+	var cmd string
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = "open"
+	case "linux":
+		cmd = "xdg-open"
+	case "windows":
+		cmd = "explorer"
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"path": dir})
+		return
+	}
+
+	if err := exec.Command(cmd, dir).Start(); err != nil {
+		slog.Error("failed to open workspace", "task_id", id, "path", dir, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to open file explorer")
+		return
+	}
+
+	slog.Info("opened workspace", "task_id", id, "path", dir)
+	writeJSON(w, http.StatusOK, map[string]string{"path": dir})
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {

@@ -67,6 +67,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - PATCH /api/v1/agent-tasks/{id} — partial update agent task
 - DELETE /api/v1/agent-tasks/{id} — delete agent task
 - POST /api/v1/agent-tasks/{id}/run — trigger immediate execution of agent task
+- POST /api/v1/agent-tasks/{id}/open-workspace — open agent's workspace directory in file explorer
 - POST /api/v1/scheduled-tasks — create one-time scheduled task (auto-deletes after execution)
 - Agent chaining: `on_success_task_id` / `on_failure_task_id` on agent tasks trigger follow-up agents with parent output as context
 - Heartbeat: scheduler checks every 10 min for missed cron jobs (24h lookback) and marks stale executions (>2h running) as failed

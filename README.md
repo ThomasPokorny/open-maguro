@@ -155,6 +155,21 @@ Response `404`: `{"error": "agent task not found"}`
 
 Check execution results via `GET /api/v1/agent-tasks/{id}/executions`.
 
+#### Open Agent Workspace
+
+```
+POST /api/v1/agent-tasks/{id}/open-workspace
+```
+
+Opens the agent's workspace directory in the system file explorer (Finder on macOS, `xdg-open` on Linux, Explorer on Windows).
+
+Response `200`:
+```json
+{"path": "/Users/you/.maguro/workspaces/550e8400-..."}
+```
+
+Response `404`: Agent not found or workspace directory doesn't exist.
+
 ---
 
 ### Agent Chaining

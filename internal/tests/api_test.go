@@ -1219,6 +1219,45 @@ func doRequest(t *testing.T, method, url, body string) *http.Response {
 	return resp
 }
 
+func TestOpenWorkspace(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create an agent (workspace dir is auto-created)
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Workspace open test",
+		"prompt": "Do stuff"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	// Open workspace — should return 200 with path
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks/"+agentID+"/open-workspace", "")
+	assertStatus(t, resp, http.StatusOK)
+	var result map[string]string
+	parseJSON(t, resp, &result)
+	if result["path"] == "" {
+		t.Fatal("expected path in response")
+	}
+	expectedSuffix := "/" + agentID
+	if !bytes.HasSuffix([]byte(result["path"]), []byte(expectedSuffix)) {
+		t.Fatalf("expected path to end with %s, got %s", expectedSuffix, result["path"])
+	}
+
+	// Non-existent agent — should return 404
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks/00000000-0000-0000-0000-000000000000/open-workspace", "")
+	assertStatus(t, resp, http.StatusNotFound)
+
+	// Delete agent, then try open-workspace — should return 404 (workspace gone)
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/agent-tasks/"+agentID, "")
+	assertStatus(t, resp, http.StatusNoContent)
+
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks/"+agentID+"/open-workspace", "")
+	assertStatus(t, resp, http.StatusNotFound)
+}
+
 func assertStatus(t *testing.T, resp *http.Response, expected int) {
 	t.Helper()
 	if resp.StatusCode != expected {

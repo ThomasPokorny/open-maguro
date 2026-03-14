@@ -292,6 +292,25 @@ When a team is selected in the sidebar, the Board view should pass `?team_id={uu
 
 ---
 
+## API Reference — Open Agent Workspace
+
+The API can open an agent's workspace directory in the system file explorer. Use this to add an "Open Workspace" button on agent cards/rows.
+
+```
+POST /api/v1/agent-tasks/{id}/open-workspace
+```
+
+**Response `200`:**
+```json
+{"path": "/Users/you/.maguro/workspaces/550e8400-..."}
+```
+
+**Response `404`:** Agent not found or workspace directory doesn't exist.
+
+This endpoint opens Finder/Explorer on the server machine (works because the dashboard and API run on the same local machine). Add a small **folder icon button** on each agent card/row that calls this endpoint. Display the returned `path` in a tooltip or toast so the user knows where the directory is.
+
+---
+
 ## Interaction Details
 
 - **Team list polling:** Fetch `GET /api/v1/teams` on app load and cache it. Refresh when teams are created/updated/deleted. No need for continuous polling — teams change rarely.
