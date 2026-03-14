@@ -8,4 +8,5 @@ type Config struct {
 	AllowedTools           []string `env:"ALLOWED_TOOLS"             envSeparator:"," envDefault:"Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*"`
 	WorkspaceRoot          string   `env:"WORKSPACE_ROOT"            envDefault:"~/.maguro/workspaces"`
 	ExecutionRetentionDays int      `env:"EXECUTION_RETENTION_DAYS"  envDefault:"30"`
+	SecretKey              string   `env:"MAGURO_SECRET_KEY"`
 }

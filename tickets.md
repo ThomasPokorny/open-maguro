@@ -39,6 +39,13 @@ Enable workflows where one agent triggers another.
 - [x] possibility to assign agent to team
 - [x] possibility to filter agent by team
 - [x] possibility to filter tasks by team
+### 9. Execution Metrics & Observability
+No visibility into system health or execution costs.
+- [] Add `duration_ms` computed field to execution responses
+- [] Add `GET /api/v1/stats` endpoint: total tasks, executions by status (last 24h/7d/30d), avg duration
+- [] Optionally expose Prometheus-compatible `/metrics` endpoint
+- [] Add tests for stats endpoint
+- [] Update docs
 
 ## Feature Backlog
 
@@ -92,21 +99,6 @@ All list endpoints return everything. Pagination is needed at scale.
 - [] Add tests for filtered and paginated responses
 - [] Update docs
 
-### 8. Task Tags / Labels
-Organizing many agents is hard without categorization.
-- [] Add migration: create `agent_task_tags` table (agent_task_id, tag)
-- [] Add `tags` array field to agent task create/update DTOs
-- [] Add `?tag=` filter to agent task list endpoint
-- [] Add tests for tag CRUD and filtering
-- [] Update docs
-
-### 9. Execution Metrics & Observability
-No visibility into system health or execution costs.
-- [] Add `duration_ms` computed field to execution responses
-- [] Add `GET /api/v1/stats` endpoint: total tasks, executions by status (last 24h/7d/30d), avg duration
-- [] Optionally expose Prometheus-compatible `/metrics` endpoint
-- [] Add tests for stats endpoint
-- [] Update docs
 
 ### 10. Agent Workspaces (Per-Agent Disk Directory) ✅ DONE
 Give every agent its own persistent workspace directory where it can read/write files across runs.

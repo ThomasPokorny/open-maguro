@@ -29,6 +29,7 @@ go run cmd/api/main.go
 | `ALLOWED_TOOLS` | No | `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*` | Comma-separated tool patterns auto-approved for agents |
 | `WORKSPACE_ROOT` | No | `~/.maguro/workspaces` | Root directory for per-agent workspaces |
 | `EXECUTION_RETENTION_DAYS` | No | `30` | Days to keep execution logs (daily cleanup purges older) |
+| `MAGURO_SECRET_KEY` | No | auto-generated | Hex-encoded 32-byte AES-256 key for encrypting skill secrets |
 
 ## API Endpoints
 
@@ -325,9 +326,23 @@ Request body:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `title` | string | Yes | Skill name (max 255 chars) |
-| `content` | string | Yes | Skill content (markdown, instructions, API keys) |
+| `content` | string | Yes | Skill content (markdown, instructions) |
+| `environment_secrets` | object | No | Key-value map of secrets injected as env vars at runtime |
 
-Response `201`: Skill object.
+Response `201`: Skill object. The response includes `secret_keys` (array of key names) but never the secret values.
+
+**Example with secrets:**
+```json
+{
+  "title": "Linear API",
+  "content": "Use the Linear GraphQL API. Your API key is in $LINEAR_API_KEY.",
+  "environment_secrets": {
+    "LINEAR_API_KEY": "lin_api_..."
+  }
+}
+```
+
+The agent receives `LINEAR_API_KEY` as an environment variable at execution time. The secret is encrypted at rest (AES-256-GCM) and never returned by the API.
 
 #### List Skills
 

@@ -137,11 +137,12 @@ type KanbanTask struct {
 }
 
 type Skill struct {
-	ID        uuid.UUID          `json:"id"`
-	Title     string             `json:"title"`
-	Content   string             `json:"content"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                 uuid.UUID          `json:"id"`
+	Title              string             `json:"title"`
+	Content            string             `json:"content"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	EnvironmentSecrets pgtype.Text        `json:"environment_secrets"`
 }
 
 type TaskExecution struct {

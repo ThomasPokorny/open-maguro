@@ -38,6 +38,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - ALLOWED_TOOLS (default: `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*`): Comma-separated list of tool patterns auto-approved for agent execution.
 - WORKSPACE_ROOT (default: `~/.maguro/workspaces`): Root directory for per-agent workspaces. Each agent gets `{WORKSPACE_ROOT}/{agent-id}/`.
 - EXECUTION_RETENTION_DAYS (default: 30): Number of days to keep execution logs. A daily cleanup purges older records automatically.
+- MAGURO_SECRET_KEY: Hex-encoded 32-byte AES-256 key for encrypting skill secrets. Auto-generated to `~/.maguro/.secret_key` if not set.
 
 ## Project Layout
 - cmd/api/ — application entry point
@@ -49,6 +50,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - internal/kanban/ — Kanban task feature (CRUD, assigned to agents)
 - internal/kanban_executor/ — Kanban worker pool (one worker per agent, sequential processing)
 - internal/team/ — Team feature (CRUD, agent grouping with hex color)
+- internal/crypto/ — AES-256-GCM encryption for skill secrets
 - internal/mcp_config/ — MCP server config management (read/write mcp.json)
 - internal/config/ — configuration loading
 - internal/database/ — database connection pool

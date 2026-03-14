@@ -17,6 +17,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"open-maguro/internal/agent_task"
+	"open-maguro/internal/crypto"
 	"open-maguro/internal/database"
 	"open-maguro/internal/executor"
 	"open-maguro/internal/kanban"
@@ -103,10 +104,17 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 
 	validate := validator.New()
 
+	// Generate test encryption key
+	testSecretKey, err := crypto.GenerateKey()
+	if err != nil {
+		pgContainer.Terminate(ctx)
+		t.Fatalf("failed to generate test secret key: %v", err)
+	}
+
 	// Wire up repos
 	agentTaskRepo := agent_task.NewPostgresRepository(pool)
 	taskExecRepo := task_execution.NewPostgresRepository(pool)
-	skillRepo := skill.NewPostgresRepository(pool)
+	skillRepo := skill.NewPostgresRepository(pool, testSecretKey)
 
 	// Wire up executor (no real claude CLI in tests) and scheduler
 	workspaceRoot := t.TempDir() + "/workspaces"

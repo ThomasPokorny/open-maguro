@@ -44,15 +44,20 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 		return nil, err
 	}
 
+	existingSecrets := existing.EnvironmentSecrets
 	merged := UpdateRequest{
-		Title:   &existing.Title,
-		Content: &existing.Content,
+		Title:              &existing.Title,
+		Content:            &existing.Content,
+		EnvironmentSecrets: &existingSecrets,
 	}
 	if req.Title != nil {
 		merged.Title = req.Title
 	}
 	if req.Content != nil {
 		merged.Content = req.Content
+	}
+	if req.EnvironmentSecrets != nil {
+		merged.EnvironmentSecrets = req.EnvironmentSecrets
 	}
 
 	return s.repo.Update(ctx, id, merged)

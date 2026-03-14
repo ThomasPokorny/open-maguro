@@ -1,6 +1,6 @@
 -- name: CreateSkill :one
-INSERT INTO skills (title, content)
-VALUES ($1, $2)
+INSERT INTO skills (title, content, environment_secrets)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: GetSkill :one
@@ -13,6 +13,7 @@ SELECT * FROM skills ORDER BY created_at DESC;
 UPDATE skills
 SET title = $2,
     content = $3,
+    environment_secrets = $4,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

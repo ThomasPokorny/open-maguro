@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addAgentSkill = `-- name: AddAgentSkill :exec
@@ -28,18 +29,19 @@ func (q *Queries) AddAgentSkill(ctx context.Context, arg AddAgentSkillParams) er
 }
 
 const createSkill = `-- name: CreateSkill :one
-INSERT INTO skills (title, content)
-VALUES ($1, $2)
-RETURNING id, title, content, created_at, updated_at
+INSERT INTO skills (title, content, environment_secrets)
+VALUES ($1, $2, $3)
+RETURNING id, title, content, created_at, updated_at, environment_secrets
 `
 
 type CreateSkillParams struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	Title              string      `json:"title"`
+	Content            string      `json:"content"`
+	EnvironmentSecrets pgtype.Text `json:"environment_secrets"`
 }
 
 func (q *Queries) CreateSkill(ctx context.Context, arg CreateSkillParams) (Skill, error) {
-	row := q.db.QueryRow(ctx, createSkill, arg.Title, arg.Content)
+	row := q.db.QueryRow(ctx, createSkill, arg.Title, arg.Content, arg.EnvironmentSecrets)
 	var i Skill
 	err := row.Scan(
 		&i.ID,
@@ -47,6 +49,7 @@ func (q *Queries) CreateSkill(ctx context.Context, arg CreateSkillParams) (Skill
 		&i.Content,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnvironmentSecrets,
 	)
 	return i, err
 }
@@ -61,7 +64,7 @@ func (q *Queries) DeleteSkill(ctx context.Context, id uuid.UUID) error {
 }
 
 const getSkill = `-- name: GetSkill :one
-SELECT id, title, content, created_at, updated_at FROM skills WHERE id = $1
+SELECT id, title, content, created_at, updated_at, environment_secrets FROM skills WHERE id = $1
 `
 
 func (q *Queries) GetSkill(ctx context.Context, id uuid.UUID) (Skill, error) {
@@ -73,12 +76,13 @@ func (q *Queries) GetSkill(ctx context.Context, id uuid.UUID) (Skill, error) {
 		&i.Content,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnvironmentSecrets,
 	)
 	return i, err
 }
 
 const listSkills = `-- name: ListSkills :many
-SELECT id, title, content, created_at, updated_at FROM skills ORDER BY created_at DESC
+SELECT id, title, content, created_at, updated_at, environment_secrets FROM skills ORDER BY created_at DESC
 `
 
 func (q *Queries) ListSkills(ctx context.Context) ([]Skill, error) {
@@ -96,6 +100,7 @@ func (q *Queries) ListSkills(ctx context.Context) ([]Skill, error) {
 			&i.Content,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EnvironmentSecrets,
 		); err != nil {
 			return nil, err
 		}
@@ -108,7 +113,7 @@ func (q *Queries) ListSkills(ctx context.Context) ([]Skill, error) {
 }
 
 const listSkillsByAgentTaskID = `-- name: ListSkillsByAgentTaskID :many
-SELECT s.id, s.title, s.content, s.created_at, s.updated_at FROM skills s
+SELECT s.id, s.title, s.content, s.created_at, s.updated_at, s.environment_secrets FROM skills s
 JOIN agent_skills asj ON s.id = asj.skill_id
 WHERE asj.agent_task_id = $1
 ORDER BY s.title
@@ -129,6 +134,7 @@ func (q *Queries) ListSkillsByAgentTaskID(ctx context.Context, agentTaskID uuid.
 			&i.Content,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EnvironmentSecrets,
 		); err != nil {
 			return nil, err
 		}
@@ -159,19 +165,26 @@ const updateSkill = `-- name: UpdateSkill :one
 UPDATE skills
 SET title = $2,
     content = $3,
+    environment_secrets = $4,
     updated_at = now()
 WHERE id = $1
-RETURNING id, title, content, created_at, updated_at
+RETURNING id, title, content, created_at, updated_at, environment_secrets
 `
 
 type UpdateSkillParams struct {
-	ID      uuid.UUID `json:"id"`
-	Title   string    `json:"title"`
-	Content string    `json:"content"`
+	ID                 uuid.UUID   `json:"id"`
+	Title              string      `json:"title"`
+	Content            string      `json:"content"`
+	EnvironmentSecrets pgtype.Text `json:"environment_secrets"`
 }
 
 func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill, error) {
-	row := q.db.QueryRow(ctx, updateSkill, arg.ID, arg.Title, arg.Content)
+	row := q.db.QueryRow(ctx, updateSkill,
+		arg.ID,
+		arg.Title,
+		arg.Content,
+		arg.EnvironmentSecrets,
+	)
 	var i Skill
 	err := row.Scan(
 		&i.ID,
@@ -179,6 +192,7 @@ func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill
 		&i.Content,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnvironmentSecrets,
 	)
 	return i, err
 }

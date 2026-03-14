@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1256,6 +1257,109 @@ func TestOpenWorkspace(t *testing.T) {
 
 	resp = doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks/"+agentID+"/open-workspace", "")
 	assertStatus(t, resp, http.StatusNotFound)
+}
+
+func TestSkillEnvironmentSecrets(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create skill with environment_secrets
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/skills", `{
+		"title": "Linear API",
+		"content": "Use the Linear GraphQL API. Your API key is in $LINEAR_API_KEY.",
+		"environment_secrets": {"LINEAR_API_KEY": "lin_api_secret123", "LINEAR_WEBHOOK_SECRET": "whsec_abc"}
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	skillID := created["id"].(string)
+
+	// Verify secret_keys are returned (sorted)
+	keys := created["secret_keys"].([]any)
+	if len(keys) != 2 {
+		t.Fatalf("expected 2 secret_keys, got %d", len(keys))
+	}
+	if keys[0] != "LINEAR_API_KEY" || keys[1] != "LINEAR_WEBHOOK_SECRET" {
+		t.Fatalf("unexpected secret_keys: %v", keys)
+	}
+
+	// Verify raw values are NOT in the response
+	respBody := doRequest(t, "GET", srv.URL+"/api/v1/skills/"+skillID, "")
+	assertStatus(t, respBody, http.StatusOK)
+	body, _ := io.ReadAll(respBody.Body)
+	respBody.Body.Close()
+	bodyStr := string(body)
+	if strings.Contains(bodyStr, "lin_api_secret123") {
+		t.Fatal("secret value leaked in GET response")
+	}
+	if strings.Contains(bodyStr, "whsec_abc") {
+		t.Fatal("secret value leaked in GET response")
+	}
+	// But secret_keys should be there
+	if !strings.Contains(bodyStr, "LINEAR_API_KEY") {
+		t.Fatal("expected secret key name in response")
+	}
+
+	// List skills — verify secrets not leaked
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/skills", "")
+	assertStatus(t, resp, http.StatusOK)
+	listBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(listBody), "lin_api_secret123") {
+		t.Fatal("secret value leaked in list response")
+	}
+
+	// PATCH to update secrets
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/skills/"+skillID, `{
+		"environment_secrets": {"NEW_KEY": "new_val"}
+	}`)
+	assertStatus(t, resp, http.StatusOK)
+	var updated map[string]any
+	parseJSON(t, resp, &updated)
+	updatedKeys := updated["secret_keys"].([]any)
+	if len(updatedKeys) != 1 || updatedKeys[0] != "NEW_KEY" {
+		t.Fatalf("expected [NEW_KEY], got %v", updatedKeys)
+	}
+
+	// PATCH without environment_secrets — should preserve existing
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/skills/"+skillID, `{
+		"title": "Linear API v2"
+	}`)
+	assertStatus(t, resp, http.StatusOK)
+	parseJSON(t, resp, &updated)
+	preservedKeys := updated["secret_keys"].([]any)
+	if len(preservedKeys) != 1 || preservedKeys[0] != "NEW_KEY" {
+		t.Fatalf("expected secrets preserved, got %v", preservedKeys)
+	}
+
+	// PATCH with empty secrets — should clear
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/skills/"+skillID, `{
+		"environment_secrets": {}
+	}`)
+	assertStatus(t, resp, http.StatusOK)
+	parseJSON(t, resp, &updated)
+	clearedKeys := updated["secret_keys"].([]any)
+	if len(clearedKeys) != 0 {
+		t.Fatalf("expected empty secret_keys after clear, got %v", clearedKeys)
+	}
+}
+
+func TestSkillWithoutSecrets(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create skill without secrets — should work and return empty secret_keys
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/skills", `{
+		"title": "Plain Skill",
+		"content": "Just instructions, no secrets"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	keys := created["secret_keys"].([]any)
+	if len(keys) != 0 {
+		t.Fatalf("expected empty secret_keys, got %v", keys)
+	}
 }
 
 func assertStatus(t *testing.T, resp *http.Response, expected int) {

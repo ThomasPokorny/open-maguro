@@ -101,14 +101,16 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 		taskTools = strings.Split(*task.AllowedTools, ",")
 	}
 
-	// Load and inject skills into prompt
+	// Load and inject skills into prompt + collect env secrets
 	prompt := task.Prompt
+	var envSecrets map[string]string
 	if e.skillLoader != nil {
 		skills, err := e.loadSkills(ctx, task)
 		if err != nil {
 			execLogger.Error("failed to load skills", "error", err)
 		} else if len(skills) > 0 {
 			prompt = e.buildPromptWithSkills(skills, task.Prompt)
+			envSecrets = e.collectSecrets(skills)
 		}
 	}
 
@@ -137,7 +139,7 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 	prompt = sp + "\n\n" + prompt
 
 	// Execute claude CLI (no timeout — agents run until completion)
-	stdout, stderr, runErr := e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir)
+	stdout, stderr, runErr := e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir, envSecrets)
 
 	// Record result
 	finishedAt := pgtype.Timestamptz{Time: time.Now(), Valid: true}
@@ -230,7 +232,7 @@ func (e *Executor) triggerChain(ctx context.Context, task domain.AgentTask, exec
 	go e.runInternal(ctx, *nextTask, &executionID, chainCtx, nil)
 }
 
-func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig string, extraTools []string, workingDir string) (stdout, stderr string, err error) {
+func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig string, extraTools []string, workingDir string, envVars map[string]string) (stdout, stderr string, err error) {
 	args := []string{"--print", "--output-format", "json"}
 	if mcpConfig != "" {
 		args = append(args, "--mcp-config", mcpConfig)
@@ -246,10 +248,15 @@ func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig strin
 	}
 	args = append(args, "-p", prompt)
 
-	//
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if workingDir != "" {
 		cmd.Dir = workingDir
+	}
+	if len(envVars) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range envVars {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -281,12 +288,14 @@ func (e *Executor) RunKanban(ctx context.Context, task domain.AgentTask, kanbanP
 		taskTools = strings.Split(*task.AllowedTools, ",")
 	}
 
-	// Load skills
+	// Load skills + collect env secrets
 	prompt := kanbanPrompt
+	var envSecrets map[string]string
 	if e.skillLoader != nil {
 		skills, err := e.loadSkills(ctx, task)
 		if err == nil && len(skills) > 0 {
 			prompt = e.buildPromptWithSkills(skills, kanbanPrompt)
+			envSecrets = e.collectSecrets(skills)
 		}
 	}
 
@@ -307,7 +316,20 @@ func (e *Executor) RunKanban(ctx context.Context, task domain.AgentTask, kanbanP
 	}
 	prompt = sp + "\n\n" + prompt
 
-	return e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir)
+	return e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir, envSecrets)
+}
+
+func (e *Executor) collectSecrets(skills []domain.Skill) map[string]string {
+	merged := make(map[string]string)
+	for _, sk := range skills {
+		for k, v := range sk.EnvironmentSecrets {
+			merged[k] = v
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
 }
 
 func (e *Executor) loadSkills(ctx context.Context, task domain.AgentTask) ([]domain.Skill, error) {

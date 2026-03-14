@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"encoding/hex"
+
 	"github.com/caarlos0/env/v11"
 	"github.com/go-playground/validator/v10"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -21,6 +23,7 @@ import (
 	dbpkg "open-maguro/db"
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/config"
+	"open-maguro/internal/crypto"
 	"open-maguro/internal/database"
 	"open-maguro/internal/executor"
 	"open-maguro/internal/kanban"
@@ -75,10 +78,29 @@ func main() {
 		slog.Info("workspace root ready", "path", workspaceRoot)
 	}
 
+	// Resolve secret key for skill encryption
+	var secretKey []byte
+	if cfg.SecretKey != "" {
+		secretKey, err = hex.DecodeString(cfg.SecretKey)
+		if err != nil || len(secretKey) != 32 {
+			slog.Error("MAGURO_SECRET_KEY must be a 64-character hex string (32 bytes)")
+			os.Exit(1)
+		}
+	} else {
+		home, _ := os.UserHomeDir()
+		keyPath := filepath.Join(home, ".maguro", ".secret_key")
+		secretKey, err = crypto.LoadOrGenerateKey(keyPath)
+		if err != nil {
+			slog.Error("failed to load or generate secret key", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("using auto-generated secret key", "path", keyPath)
+	}
+
 	// Wire up repositories
 	agentTaskRepo := agent_task.NewPostgresRepository(pool)
 	taskExecRepo := task_execution.NewPostgresRepository(pool)
-	skillRepo := skill.NewPostgresRepository(pool)
+	skillRepo := skill.NewPostgresRepository(pool, secretKey)
 
 	// Wire up executor and scheduler
 	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, cfg.MCPConfigPath, cfg.AllowedTools, workspaceRoot)

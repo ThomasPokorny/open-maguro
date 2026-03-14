@@ -134,13 +134,13 @@ The chained agent receives the parent agent's output as context. Circular chains
 
 ### Skills Management
 
-Skills are reusable knowledge documents that get injected into agent prompts at execution time. Use them to give agents API knowledge, instructions, and credentials.
+Skills are reusable knowledge documents that get injected into agent prompts at execution time. Use them to give agents API knowledge and instructions. Skills can also carry **encrypted environment secrets** — API keys that get injected as environment variables at runtime, never exposed in prompts or API responses.
 
 ```bash
-# Create a skill
+# Create a skill (with encrypted env secrets)
 curl -X POST http://localhost:8080/api/v1/skills \
   -H 'Content-Type: application/json' \
-  -d '{"title": "Slack API", "content": "Use the Slack Bot Token to send messages..."}'
+  -d '{"title": "Slack API", "content": "Use the Slack API. Your token is in $SLACK_BOT_TOKEN.", "environment_secrets": {"SLACK_BOT_TOKEN": "xoxb-..."}}'
 
 # List all skills
 curl http://localhost:8080/api/v1/skills
@@ -254,4 +254,6 @@ curl -X DELETE http://localhost:8080/api/v1/teams/{id}
 
 **"Show me all agents in team Y"** → GET `/api/v1/agent-tasks?team_id={team-uuid}`.
 
-**User describes a reusable capability** → Consider creating a skill. If an agent needs to use a specific API, the skill should contain endpoint references, authentication details, and examples.
+**User describes a reusable capability** → Consider creating a skill. If an agent needs to use a specific API, the skill should contain endpoint references and examples. Put the API key in `environment_secrets` — the agent accesses it via the environment variable (e.g. `$API_KEY`), and it's encrypted at rest.
+
+**"Here's my API key for X"** → Create a skill with `environment_secrets: {"X_API_KEY": "the-key"}`. The skill content should explain how to use the API with `$X_API_KEY`.

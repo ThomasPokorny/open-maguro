@@ -311,6 +311,113 @@ This endpoint opens Finder/Explorer on the server machine (works because the das
 
 ---
 
+## Skills — Environment Secrets
+
+Skills now support **encrypted environment secrets** — API keys and tokens that get securely injected as environment variables at agent runtime. The API never returns secret values, only key names.
+
+### Skills UI Changes
+
+#### Create/Edit Skill Form
+
+Add an **"Environment Secrets"** section below the existing `content` textarea:
+
+- A **key-value pair editor** — a list of rows, each with:
+  - `Key` text input (the env var name, e.g. `LINEAR_API_KEY`) — uppercase, no spaces
+  - `Value` password input (the secret value, e.g. `lin_api_...`) — masked by default with a toggle-visibility eye icon
+  - A **remove row** button (trash/x icon)
+- A **"+ Add Secret"** button to add a new key-value row
+- The section should feel optional — collapsed or minimal when no secrets are set. Don't clutter the form for skills that are just instructions.
+
+**On create:** Send the key-value pairs as `environment_secrets` in the POST body:
+```json
+{
+  "title": "Linear API",
+  "content": "Use the Linear GraphQL API...",
+  "environment_secrets": {
+    "LINEAR_API_KEY": "lin_api_...",
+    "LINEAR_WEBHOOK_SECRET": "whsec_..."
+  }
+}
+```
+
+**On edit:** The API does NOT return secret values — only key names via `secret_keys`. So when editing:
+- Show existing secret key names as read-only chips/badges (e.g. `LINEAR_API_KEY ●●●●`)
+- To **update** a secret, user must re-enter the value (show an "Update" button or inline edit per key)
+- To **remove** a secret, user clicks remove — on save, send the updated `environment_secrets` map (without the removed key)
+- To **add** a new secret, use the same "+ Add Secret" row
+- When saving, send `environment_secrets` with all current key-value pairs. Omit `environment_secrets` from the PATCH body entirely if the user didn't touch the secrets section (this preserves existing secrets).
+
+**Important:** Sending `"environment_secrets": {}` clears all secrets. Only send it when the user explicitly removes all secrets.
+
+#### Skill List/Card View
+
+On each skill card/row, show a small **lock icon** or **key count badge** if the skill has secrets:
+- e.g. "🔑 2" or a small lock icon with count
+- Nothing shown if `secret_keys` is empty
+- This helps users quickly identify which skills carry credentials
+
+#### Skill Detail View
+
+When viewing a skill's details, show the secret key names in a list:
+- `LINEAR_API_KEY` ●●●●
+- `LINEAR_WEBHOOK_SECRET` ●●●●
+
+Never show values. The dots/bullets make it clear values exist but are hidden.
+
+### Skills API Reference (updated)
+
+**Create skill:**
+```
+POST /api/v1/skills
+Content-Type: application/json
+
+{
+  "title": "Linear API",
+  "content": "Use the Linear GraphQL API. Your API key is in $LINEAR_API_KEY.",
+  "environment_secrets": {
+    "LINEAR_API_KEY": "lin_api_..."
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | Yes | Skill name (1–255 chars) |
+| `content` | string | Yes | Instructions (markdown) |
+| `environment_secrets` | object | No | Key-value map of secrets (encrypted at rest) |
+
+**Update skill:**
+```
+PATCH /api/v1/skills/{id}
+Content-Type: application/json
+
+{"environment_secrets": {"NEW_KEY": "new_value"}}
+```
+
+- Omitting `environment_secrets` preserves existing secrets
+- Sending `{}` clears all secrets
+- Sending a new map fully replaces existing secrets
+
+**Skill response shape:**
+```json
+{
+  "id": "uuid",
+  "title": "Linear API",
+  "content": "Use the Linear GraphQL API...",
+  "secret_keys": ["LINEAR_API_KEY"],
+  "created_at": "2026-03-14T10:00:00Z",
+  "updated_at": "2026-03-14T10:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `secret_keys` | string[] | Names of stored secrets (values never returned) |
+
+The `environment_secrets` field is **write-only** — it never appears in any API response. Only `secret_keys` (the key names) are returned.
+
+---
+
 ## Interaction Details
 
 - **Team list polling:** Fetch `GET /api/v1/teams` on app load and cache it. Refresh when teams are created/updated/deleted. No need for continuous polling — teams change rarely.
