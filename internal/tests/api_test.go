@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
@@ -544,6 +545,41 @@ func TestExecutionsList(t *testing.T) {
 	}
 }
 
+func TestAgentWorkspaceLifecycle(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create an agent
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Workspace agent",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Use workspace"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	agentID := created["id"].(string)
+
+	// Verify workspace directory was created
+	workspaceDir := GetWorkspaceRoot(t) + "/" + agentID
+	info, err := os.Stat(workspaceDir)
+	if err != nil {
+		t.Fatalf("expected workspace directory to exist at %s, got error: %v", workspaceDir, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected %s to be a directory", workspaceDir)
+	}
+
+	// Delete the agent
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/agent-tasks/"+agentID, "")
+	assertStatus(t, resp, http.StatusNoContent)
+
+	// Verify workspace directory was removed
+	if _, err := os.Stat(workspaceDir); !os.IsNotExist(err) {
+		t.Fatalf("expected workspace directory to be removed after agent delete, but it still exists")
+	}
+}
+
 func TestExecutionResponseShape(t *testing.T) {
 	srv, cleanup := SetupTestServer(t)
 	defer cleanup()
@@ -588,6 +624,245 @@ func TestExecutionResponseShape(t *testing.T) {
 	// triggered_by_execution_id should be absent (omitempty) or null for non-chained executions
 	if val, ok := exec["triggered_by_execution_id"]; ok && val != nil {
 		t.Fatalf("expected triggered_by_execution_id to be nil for non-chained execution, got %v", val)
+	}
+}
+
+func TestKanbanTaskCRUD(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create an agent task first (prerequisite)
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Kanban Worker",
+		"cron_expression": "0 9 * * *",
+		"prompt": "Process tasks"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	// Create kanban task
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/kanban-tasks", `{
+		"title": "Write report",
+		"description": "Generate the Q1 report",
+		"agent_task_id": "`+agentID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	kanbanID := created["id"].(string)
+
+	if created["title"] != "Write report" {
+		t.Fatalf("expected title 'Write report', got %v", created["title"])
+	}
+	if created["status"] != "todo" {
+		t.Fatalf("expected status 'todo', got %v", created["status"])
+	}
+	if created["agent_task_id"] != agentID {
+		t.Fatalf("expected agent_task_id %s, got %v", agentID, created["agent_task_id"])
+	}
+
+	// Get by ID
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks/"+kanbanID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var fetched map[string]any
+	parseJSON(t, resp, &fetched)
+	if fetched["id"] != kanbanID {
+		t.Fatalf("expected id %s, got %v", kanbanID, fetched["id"])
+	}
+
+	// List all
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks", "")
+	assertStatus(t, resp, http.StatusOK)
+	var list []map[string]any
+	parseJSON(t, resp, &list)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 kanban task, got %d", len(list))
+	}
+
+	// List with agent_id filter
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks?agent_id="+agentID, "")
+	assertStatus(t, resp, http.StatusOK)
+	parseJSON(t, resp, &list)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 kanban task for agent, got %d", len(list))
+	}
+
+	// List with status filter (task may have been picked up by executor already,
+	// so check that status filter works rather than asserting specific counts)
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks?status=done", "")
+	assertStatus(t, resp, http.StatusOK)
+	// Just verify the endpoint works with filters — don't assert counts since
+	// the kanban executor races with the test
+
+	// Update
+	resp = doRequest(t, "PATCH", srv.URL+"/api/v1/kanban-tasks/"+kanbanID, `{
+		"title": "Updated report task"
+	}`)
+	assertStatus(t, resp, http.StatusOK)
+	var updated map[string]any
+	parseJSON(t, resp, &updated)
+	if updated["title"] != "Updated report task" {
+		t.Fatalf("expected title 'Updated report task', got %v", updated["title"])
+	}
+	if updated["description"] != "Generate the Q1 report" {
+		t.Fatalf("expected description preserved, got %v", updated["description"])
+	}
+
+	// Delete
+	resp = doRequest(t, "DELETE", srv.URL+"/api/v1/kanban-tasks/"+kanbanID, "")
+	assertStatus(t, resp, http.StatusNoContent)
+
+	// Verify deleted
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks/"+kanbanID, "")
+	assertStatus(t, resp, http.StatusNotFound)
+}
+
+func TestKanbanTaskPickup(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create an agent
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Auto Worker",
+		"cron_expression": "0 9 * * *",
+		"prompt": "You are a task worker"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	// Create a kanban task — the executor should pick it up
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/kanban-tasks", `{
+		"title": "Auto task",
+		"description": "Should be picked up automatically",
+		"agent_task_id": "`+agentID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	kanbanID := created["id"].(string)
+
+	// Wait for the kanban executor to process (will fail since no claude CLI,
+	// but should transition from todo -> progress -> failed)
+	time.Sleep(1 * time.Second)
+
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/kanban-tasks/"+kanbanID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var result map[string]any
+	parseJSON(t, resp, &result)
+
+	// Should have been picked up (moved from todo to progress or failed)
+	status := result["status"].(string)
+	if status == "todo" {
+		t.Fatalf("expected kanban task to be picked up (progress or failed), but still 'todo'")
+	}
+}
+
+func TestAgentTaskWithoutCron(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create agent without cron_expression (kanban-only agent)
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Kanban-only agent",
+		"prompt": "Process kanban tasks"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	var created map[string]any
+	parseJSON(t, resp, &created)
+	id := created["id"].(string)
+
+	if created["name"] != "Kanban-only agent" {
+		t.Fatalf("expected name 'Kanban-only agent', got %v", created["name"])
+	}
+	if created["task_type"] != "cron" {
+		t.Fatalf("expected task_type 'cron', got %v", created["task_type"])
+	}
+	// cron_expression should be absent (omitempty) or null
+	if val, ok := created["cron_expression"]; ok && val != nil {
+		t.Fatalf("expected cron_expression to be nil, got %v", val)
+	}
+
+	// Should be usable for kanban tasks
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/kanban-tasks", `{
+		"title": "Test task for kanban-only agent",
+		"agent_task_id": "`+id+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Verify the agent can be fetched
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks/"+id, "")
+	assertStatus(t, resp, http.StatusOK)
+	var fetched map[string]any
+	parseJSON(t, resp, &fetched)
+	if val, ok := fetched["cron_expression"]; ok && val != nil {
+		t.Fatalf("expected cron_expression to be nil on GET, got %v", val)
+	}
+}
+
+func TestKanbanTaskExecutionLogging(t *testing.T) {
+	srv, cleanup := SetupTestServer(t)
+	defer cleanup()
+
+	// Create an agent
+	resp := doRequest(t, "POST", srv.URL+"/api/v1/agent-tasks", `{
+		"name": "Logging Worker",
+		"prompt": "Process tasks and log"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var agent map[string]any
+	parseJSON(t, resp, &agent)
+	agentID := agent["id"].(string)
+
+	// Create a kanban task
+	resp = doRequest(t, "POST", srv.URL+"/api/v1/kanban-tasks", `{
+		"title": "Logged kanban task",
+		"description": "This should create an execution record",
+		"agent_task_id": "`+agentID+`"
+	}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Wait for the kanban executor to process (will fail since no claude CLI)
+	time.Sleep(2 * time.Second)
+
+	// Check that an execution record was created for this agent
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/agent-tasks/"+agentID+"/executions", "")
+	assertStatus(t, resp, http.StatusOK)
+	var executions []map[string]any
+	parseJSON(t, resp, &executions)
+
+	if len(executions) == 0 {
+		t.Fatalf("expected at least 1 execution record from kanban task, got 0")
+	}
+
+	// Verify the execution has the kanban task name prefix
+	exec := executions[0]
+	taskName, ok := exec["task_name"].(string)
+	if !ok {
+		t.Fatalf("expected task_name to be a string, got %v", exec["task_name"])
+	}
+	if taskName != "[kanban] Logged kanban task" {
+		t.Fatalf("expected task_name '[kanban] Logged kanban task', got %s", taskName)
+	}
+
+	// Execution should also appear in the global executions list
+	resp = doRequest(t, "GET", srv.URL+"/api/v1/executions", "")
+	assertStatus(t, resp, http.StatusOK)
+	var allExecs []map[string]any
+	parseJSON(t, resp, &allExecs)
+	found := false
+	for _, e := range allExecs {
+		if tn, ok := e["task_name"].(string); ok && tn == "[kanban] Logged kanban task" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("kanban execution not found in global executions list")
 	}
 }
 

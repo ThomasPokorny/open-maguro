@@ -3,6 +3,9 @@ package agent_task
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"open-maguro/internal/domain"
@@ -17,15 +20,28 @@ type Repository interface {
 }
 
 type Service struct {
-	repo Repository
+	repo          Repository
+	workspaceRoot string
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, workspaceRoot string) *Service {
+	return &Service{repo: repo, workspaceRoot: workspaceRoot}
 }
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*domain.AgentTask, error) {
-	return s.repo.Create(ctx, req)
+	task, err := s.repo.Create(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.workspaceRoot != "" {
+		dir := filepath.Join(s.workspaceRoot, task.ID.String())
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			slog.Error("failed to create agent workspace", "task_id", task.ID, "path", dir, "error", err)
+		}
+	}
+
+	return task, nil
 }
 
 func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*domain.AgentTask, error) {
@@ -95,7 +111,18 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateRequest) (
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	if s.workspaceRoot != "" {
+		dir := filepath.Join(s.workspaceRoot, id.String())
+		if err := os.RemoveAll(dir); err != nil {
+			slog.Error("failed to remove agent workspace", "task_id", id, "path", dir, "error", err)
+		}
+	}
+
+	return nil
 }
 
 // validateNoChainCycle follows the chain from the given triggers and ensures

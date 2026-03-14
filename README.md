@@ -1,4 +1,4 @@
-# OpenMaguro
+# OpenMaguro🐟
 
 Scheduled Claude Code SDK agent task orchestrator. Define agent tasks with cron schedules and track their execution history via a REST API.
 
@@ -27,6 +27,7 @@ go run cmd/api/main.go
 | `LOG_LEVEL` | No | `info` | Logging level |
 | `MCP_CONFIG_PATH` | No | — | Path to global MCP config file (mcp.json) |
 | `ALLOWED_TOOLS` | No | `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*` | Comma-separated tool patterns auto-approved for agents |
+| `WORKSPACE_ROOT` | No | `~/.maguro/workspaces` | Root directory for per-agent workspaces |
 
 ## API Endpoints
 
@@ -163,6 +164,21 @@ curl -X PATCH http://localhost:8080/api/v1/agent-tasks/{id} \
 ```
 
 When an agent completes, the chained agent receives the parent's output as context in its prompt. Circular chains are rejected at create/update time. Chained executions include `triggered_by_execution_id` for traceability.
+
+---
+
+### Agent Workspaces
+
+Each agent gets its own persistent workspace directory at `{WORKSPACE_ROOT}/{agent-id}/`. The directory is:
+
+- **Created** automatically when the agent is created
+- **Deleted** automatically when the agent is deleted
+- **Set as working directory** (`cwd`) for every claude CLI execution
+- **Communicated to the agent** via the system prompt so it knows where to read/write files
+
+Files persist across runs, allowing agents to maintain state, notes, intermediate results, or configuration between executions. One-time scheduled tasks do not get workspaces.
+
+Configure the root with `WORKSPACE_ROOT` env var (default: `~/.maguro/workspaces`).
 
 ---
 
@@ -333,6 +349,61 @@ GET /api/v1/agent-tasks/{id}/skills
 ```
 
 Response `200`: Array of skill objects attached to this agent.
+
+---
+
+### Kanban Tasks
+
+Assign work items to agents. Each agent processes its queue sequentially — one task at a time. The agent maintains a `work-log.md` in its workspace for context across tasks.
+
+#### Create Kanban Task
+
+```
+POST /api/v1/kanban-tasks
+```
+
+Request body:
+```json
+{
+  "title": "Write Q1 report",
+  "description": "Generate the quarterly report from the KPI data in workspace",
+  "agent_task_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | Yes | Task title (max 255 chars) |
+| `description` | string | No | Detailed task description |
+| `agent_task_id` | uuid | Yes | Agent to assign this task to |
+
+Response `201`: Kanban task object with `status: "todo"`. The assigned agent's worker picks it up automatically.
+
+#### List Kanban Tasks
+
+```
+GET /api/v1/kanban-tasks
+GET /api/v1/kanban-tasks?agent_id={uuid}
+GET /api/v1/kanban-tasks?status=todo
+GET /api/v1/kanban-tasks?agent_id={uuid}&status=progress
+```
+
+Response `200`: Array of kanban task objects. Done tasks older than 2 hours are hidden from the default list (pass `?status=done` to see all).
+
+| Status | Description |
+|---|---|
+| `todo` | Queued, waiting for agent |
+| `progress` | Agent is working on it |
+| `done` | Completed successfully |
+| `failed` | Agent failed to complete |
+
+#### Get / Update / Delete
+
+```
+GET /api/v1/kanban-tasks/{id}
+PATCH /api/v1/kanban-tasks/{id}
+DELETE /api/v1/kanban-tasks/{id}
+```
 
 ---
 

@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -41,10 +43,11 @@ type Executor struct {
 	taskLoader      TaskLoader
 	globalMCPConfig string
 	allowedTools    []string
+	workspaceRoot   string
 }
 
-func New(repo ExecutionRepository, skillLoader SkillLoader, taskLoader TaskLoader, globalMCPConfig string, allowedTools []string) *Executor {
-	return &Executor{repo: repo, skillLoader: skillLoader, taskLoader: taskLoader, globalMCPConfig: globalMCPConfig, allowedTools: allowedTools}
+func New(repo ExecutionRepository, skillLoader SkillLoader, taskLoader TaskLoader, globalMCPConfig string, allowedTools []string, workspaceRoot string) *Executor {
+	return &Executor{repo: repo, skillLoader: skillLoader, taskLoader: taskLoader, globalMCPConfig: globalMCPConfig, allowedTools: allowedTools, workspaceRoot: workspaceRoot}
 }
 
 // Run executes a single agent task. Safe to call from a goroutine.
@@ -80,10 +83,16 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 		return
 	}
 
-	// Use task-level MCP config, fall back to global
+	// Use task-level MCP config, fall back to global.
+	// Resolve to absolute path so it works regardless of cmd.Dir (workspace).
 	mcpConfig := e.globalMCPConfig
 	if task.MCPConfig != nil {
 		mcpConfig = *task.MCPConfig
+	}
+	if mcpConfig != "" && !filepath.IsAbs(mcpConfig) {
+		if abs, err := filepath.Abs(mcpConfig); err == nil {
+			mcpConfig = abs
+		}
 	}
 
 	// Merge global + per-task allowed tools (additive)
@@ -108,11 +117,27 @@ func (e *Executor) runInternal(ctx context.Context, task domain.AgentTask, trigg
 		prompt = chainContext + "\n\n" + prompt
 	}
 
-	// Prepend system prompt
-	prompt = systemPrompt + "\n\n" + prompt
+	// Prepare workspace directory (ensure it exists for pre-existing agents)
+	workspaceDir := ""
+	if e.workspaceRoot != "" {
+		workspaceDir = filepath.Join(e.workspaceRoot, task.ID.String())
+		if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+			execLogger.Error("failed to ensure workspace directory", "path", workspaceDir, "error", err)
+			workspaceDir = "" // fall back to no workspace
+		}
+	}
+
+	// Prepend system prompt (with workspace info if available)
+	sp := systemPrompt
+	if workspaceDir != "" {
+		sp += fmt.Sprintf("\n\nYour workspace directory is: %s\nYou can read and write files here freely. Files persist between runs.", workspaceDir)
+		// Inject file tools so the agent can actually read/write in its workspace
+		taskTools = append(taskTools, "Read", "Write", "Edit", "Glob", "Grep")
+	}
+	prompt = sp + "\n\n" + prompt
 
 	// Execute claude CLI (no timeout — agents run until completion)
-	stdout, stderr, runErr := e.runClaude(ctx, prompt, mcpConfig, taskTools)
+	stdout, stderr, runErr := e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir)
 
 	// Record result
 	finishedAt := pgtype.Timestamptz{Time: time.Now(), Valid: true}
@@ -205,7 +230,7 @@ func (e *Executor) triggerChain(ctx context.Context, task domain.AgentTask, exec
 	go e.runInternal(ctx, *nextTask, &executionID, chainCtx, nil)
 }
 
-func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig string, extraTools []string) (stdout, stderr string, err error) {
+func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig string, extraTools []string, workingDir string) (stdout, stderr string, err error) {
 	args := []string{"--print", "--output-format", "json"}
 	if mcpConfig != "" {
 		args = append(args, "--mcp-config", mcpConfig)
@@ -221,7 +246,11 @@ func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig strin
 	}
 	args = append(args, "-p", prompt)
 
+	//
 	cmd := exec.CommandContext(ctx, "claude", args...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -229,6 +258,56 @@ func (e *Executor) runClaude(ctx context.Context, prompt string, mcpConfig strin
 
 	err = cmd.Run()
 	return stdoutBuf.String(), stderrBuf.String(), err
+}
+
+// RunKanban executes an agent with a custom kanban prompt. It handles MCP config,
+// allowed tools, skills, workspace, and system prompt — but does NOT create a
+// task_execution record or trigger chaining. Returns stdout, stderr, and error.
+func (e *Executor) RunKanban(ctx context.Context, task domain.AgentTask, kanbanPrompt string) (stdout, stderr string, err error) {
+	// MCP config
+	mcpConfig := e.globalMCPConfig
+	if task.MCPConfig != nil {
+		mcpConfig = *task.MCPConfig
+	}
+	if mcpConfig != "" && !filepath.IsAbs(mcpConfig) {
+		if abs, err := filepath.Abs(mcpConfig); err == nil {
+			mcpConfig = abs
+		}
+	}
+
+	// Merge tools
+	var taskTools []string
+	if task.AllowedTools != nil && *task.AllowedTools != "" {
+		taskTools = strings.Split(*task.AllowedTools, ",")
+	}
+
+	// Load skills
+	prompt := kanbanPrompt
+	if e.skillLoader != nil {
+		skills, err := e.loadSkills(ctx, task)
+		if err == nil && len(skills) > 0 {
+			prompt = e.buildPromptWithSkills(skills, kanbanPrompt)
+		}
+	}
+
+	// Workspace
+	workspaceDir := ""
+	if e.workspaceRoot != "" {
+		workspaceDir = filepath.Join(e.workspaceRoot, task.ID.String())
+		if mkErr := os.MkdirAll(workspaceDir, 0755); mkErr != nil {
+			workspaceDir = ""
+		}
+	}
+
+	// System prompt
+	sp := systemPrompt
+	if workspaceDir != "" {
+		sp += fmt.Sprintf("\n\nYour workspace directory is: %s\nYou can read and write files here freely. Files persist between runs.", workspaceDir)
+		taskTools = append(taskTools, "Read", "Write", "Edit", "Glob", "Grep")
+	}
+	prompt = sp + "\n\n" + prompt
+
+	return e.runClaude(ctx, prompt, mcpConfig, taskTools, workspaceDir)
 }
 
 func (e *Executor) loadSkills(ctx context.Context, task domain.AgentTask) ([]domain.Skill, error) {

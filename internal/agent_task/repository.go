@@ -60,9 +60,14 @@ func (r *PostgresRepository) Create(ctx context.Context, params CreateRequest) (
 		onFailureTaskID = pgtype.UUID{Bytes: *params.OnFailureTaskID, Valid: true}
 	}
 
+	cronExpr := pgtype.Text{}
+	if params.CronExpression != nil {
+		cronExpr = pgtype.Text{String: *params.CronExpression, Valid: true}
+	}
+
 	row, err := r.queries.CreateAgentTask(ctx, sqlcgen.CreateAgentTaskParams{
 		Name:              params.Name,
-		CronExpression:    pgtype.Text{String: params.CronExpression, Valid: true},
+		CronExpression:    cronExpr,
 		Prompt:            params.Prompt,
 		Enabled:           enabled,
 		McpConfig:         mcpConfig,

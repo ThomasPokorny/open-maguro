@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,6 +23,8 @@ import (
 	"open-maguro/internal/config"
 	"open-maguro/internal/database"
 	"open-maguro/internal/executor"
+	"open-maguro/internal/kanban"
+	kanbanexec "open-maguro/internal/kanban_executor"
 	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/router"
 	"open-maguro/internal/scheduled_task"
@@ -56,17 +60,31 @@ func main() {
 
 	validate := validator.New()
 
+	// Expand ~ in workspace root
+	workspaceRoot := cfg.WorkspaceRoot
+	if strings.HasPrefix(workspaceRoot, "~/") {
+		home, _ := os.UserHomeDir()
+		workspaceRoot = filepath.Join(home, workspaceRoot[2:])
+	}
+	if workspaceRoot != "" {
+		if err := os.MkdirAll(workspaceRoot, 0755); err != nil {
+			slog.Error("failed to create workspace root", "path", workspaceRoot, "error", err)
+			os.Exit(1)
+		}
+		slog.Info("workspace root ready", "path", workspaceRoot)
+	}
+
 	// Wire up repositories
 	agentTaskRepo := agent_task.NewPostgresRepository(pool)
 	taskExecRepo := task_execution.NewPostgresRepository(pool)
 	skillRepo := skill.NewPostgresRepository(pool)
 
 	// Wire up executor and scheduler
-	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, cfg.MCPConfigPath, cfg.AllowedTools)
+	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, cfg.MCPConfigPath, cfg.AllowedTools, workspaceRoot)
 	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec)
 
 	// Wire up agent_task (with scheduler reload callback)
-	agentTaskService := agent_task.NewService(agentTaskRepo)
+	agentTaskService := agent_task.NewService(agentTaskRepo, workspaceRoot)
 	agentTaskHandler := agent_task.NewHandler(agentTaskService, validate,
 		agent_task.WithOnTaskChanged(sched.Reload),
 		agent_task.WithRunner(exec),
@@ -90,7 +108,18 @@ func main() {
 	skillService := skill.NewService(skillRepo)
 	skillHandler := skill.NewHandler(skillService, validate)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler)
+	// Wire up kanban
+	kanbanRepo := kanban.NewPostgresRepository(pool)
+	kanbanService := kanban.NewService(kanbanRepo)
+	kanbanExec := kanbanexec.New(kanbanRepo, agentTaskRepo, taskExecRepo, exec)
+	if err := kanbanExec.LoadPending(); err != nil {
+		slog.Error("failed to load pending kanban tasks", "error", err)
+	}
+	kanbanHandler := kanban.NewHandler(kanbanService, validate,
+		kanban.WithOnTaskCreated(kanbanExec.Enqueue),
+	)
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -112,6 +141,7 @@ func main() {
 		<-sigCh
 		slog.Info("shutting down")
 		sched.Stop()
+		kanbanExec.Stop()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		srv.Shutdown(shutdownCtx)

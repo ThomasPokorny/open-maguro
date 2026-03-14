@@ -57,6 +57,50 @@ func (ns NullExecutionStatus) Value() (driver.Value, error) {
 	return string(ns.ExecutionStatus), nil
 }
 
+type KanbanTaskStatus string
+
+const (
+	KanbanTaskStatusTodo     KanbanTaskStatus = "todo"
+	KanbanTaskStatusProgress KanbanTaskStatus = "progress"
+	KanbanTaskStatusDone     KanbanTaskStatus = "done"
+	KanbanTaskStatusFailed   KanbanTaskStatus = "failed"
+)
+
+func (e *KanbanTaskStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = KanbanTaskStatus(s)
+	case string:
+		*e = KanbanTaskStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for KanbanTaskStatus: %T", src)
+	}
+	return nil
+}
+
+type NullKanbanTaskStatus struct {
+	KanbanTaskStatus KanbanTaskStatus `json:"kanban_task_status"`
+	Valid            bool             `json:"valid"` // Valid is true if KanbanTaskStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullKanbanTaskStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.KanbanTaskStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.KanbanTaskStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullKanbanTaskStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.KanbanTaskStatus), nil
+}
+
 type AgentSkill struct {
 	AgentTaskID uuid.UUID `json:"agent_task_id"`
 	SkillID     uuid.UUID `json:"skill_id"`
@@ -78,6 +122,17 @@ type AgentTask struct {
 	GlobalSkillAccess bool               `json:"global_skill_access"`
 	OnSuccessTaskID   pgtype.UUID        `json:"on_success_task_id"`
 	OnFailureTaskID   pgtype.UUID        `json:"on_failure_task_id"`
+}
+
+type KanbanTask struct {
+	ID          uuid.UUID          `json:"id"`
+	Title       string             `json:"title"`
+	Description string             `json:"description"`
+	AgentTaskID uuid.UUID          `json:"agent_task_id"`
+	Status      KanbanTaskStatus   `json:"status"`
+	Result      pgtype.Text        `json:"result"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Skill struct {

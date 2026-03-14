@@ -29,6 +29,8 @@ Enable workflows where one agent triggers another.
 - [x] Update docs
 - [x] Create new lovable prompt to also reflect those changes. The agent configuration ui, should enable one to create those agents
 
+[x] Kanban Task Queue — agents pick up assigned work items sequentially, maintain work-log.md in workspace. Migration 010, internal/kanban/ + internal/kanban_executor/, full CRUD API with status filters, auto-pickup on create, restart recovery.
+
 ## Feature Backlog
 
 ### 1. Execution Concurrency Limits
@@ -103,7 +105,17 @@ No visibility into system health or execution costs.
 - [] Add tests for stats endpoint
 - [] Update docs
 
-### 10. Agent Templates
+### 10. Agent Workspaces (Per-Agent Disk Directory) ✅ DONE
+Give every agent its own persistent workspace directory where it can read/write files across runs.
+- [x] Add `WORKSPACE_ROOT` env var to config (default: `~/.maguro/workspaces`)
+- [x] Create `{WORKSPACE_ROOT}/{agent-id}/` directory when agent is created
+- [x] Delete `{WORKSPACE_ROOT}/{agent-id}/` directory when agent is deleted
+- [x] Executor sets `cmd.Dir` to agent's workspace before running claude CLI
+- [x] System prompt tells the agent about its workspace path
+- [x] Add tests for workspace lifecycle (create/delete)
+- [x] Update docs (CLAUDE.md, README.md, CLAUDE-AGENT.md)
+
+### 11. Agent Templates
 Reduce boilerplate for common agent patterns.
 - [] Add migration: create `agent_templates` table (id, name, prompt_template, default_cron, default_tools)
 - [] CRUD endpoints: `POST/GET/PATCH/DELETE /api/v1/templates`

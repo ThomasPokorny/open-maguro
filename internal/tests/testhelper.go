@@ -19,6 +19,8 @@ import (
 	"open-maguro/internal/agent_task"
 	"open-maguro/internal/database"
 	"open-maguro/internal/executor"
+	"open-maguro/internal/kanban"
+	kanbanexec "open-maguro/internal/kanban_executor"
 	"open-maguro/internal/mcp_config"
 	"open-maguro/internal/router"
 	"open-maguro/internal/scheduled_task"
@@ -45,6 +47,15 @@ func init() {
 func migrationsDir() string {
 	_, filename, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(filename), "..", "..", "db", "migrations")
+}
+
+// testWorkspaceRoot stores the workspace root for the current test so tests can inspect it.
+var testWorkspaceRoot string
+
+// GetWorkspaceRoot returns the workspace root used by the current test server.
+func GetWorkspaceRoot(t *testing.T) string {
+	t.Helper()
+	return testWorkspaceRoot
 }
 
 // SetupTestServer spins up a Postgres testcontainer, runs migrations,
@@ -97,11 +108,13 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 	skillRepo := skill.NewPostgresRepository(pool)
 
 	// Wire up executor (no real claude CLI in tests) and scheduler
-	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, "", nil)
+	workspaceRoot := t.TempDir() + "/workspaces"
+	testWorkspaceRoot = workspaceRoot
+	exec := executor.New(taskExecRepo, skillRepo, agentTaskRepo, "", nil, workspaceRoot)
 	sched := scheduler.New(agentTaskRepo, agentTaskRepo, taskExecRepo, exec)
 
 	// Wire up services and handlers
-	agentTaskService := agent_task.NewService(agentTaskRepo)
+	agentTaskService := agent_task.NewService(agentTaskRepo, workspaceRoot)
 	agentTaskHandler := agent_task.NewHandler(agentTaskService, validate,
 		agent_task.WithOnTaskChanged(sched.Reload),
 		agent_task.WithRunner(exec),
@@ -121,10 +134,18 @@ func SetupTestServer(t *testing.T) (server *httptest.Server, cleanup func()) {
 	skillService := skill.NewService(skillRepo)
 	skillHandler := skill.NewHandler(skillService, validate)
 
-	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler)
+	kanbanRepo := kanban.NewPostgresRepository(pool)
+	kanbanService := kanban.NewService(kanbanRepo)
+	kExec := kanbanexec.New(kanbanRepo, agentTaskRepo, taskExecRepo, exec)
+	kanbanHandler := kanban.NewHandler(kanbanService, validate,
+		kanban.WithOnTaskCreated(kExec.Enqueue),
+	)
+
+	r := router.New(agentTaskHandler, taskExecHandler, scheduledTaskHandler, mcpConfigHandler, skillHandler, kanbanHandler)
 	srv := httptest.NewServer(r)
 
 	return srv, func() {
+		kExec.Stop()
 		srv.Close()
 		pool.Close()
 		pgContainer.Terminate(ctx)

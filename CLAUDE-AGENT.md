@@ -149,6 +149,29 @@ curl http://localhost:8080/api/v1/agent-tasks/{taskId}/skills
 
 To give an agent access to **all** skills, set `global_skill_access: true` on the agent task.
 
+### Agent Workspaces
+
+Every agent has a persistent workspace directory at `~/.maguro/workspaces/{agent-id}/`. The agent's claude CLI runs with this as its working directory, and the system prompt informs the agent about it. Files written there persist between runs.
+
+### Kanban Tasks
+
+Assign work items to agents via a kanban-style queue. Each agent processes tasks one at a time, maintaining a `work-log.md` in its workspace.
+
+```bash
+# Create a task for an agent
+curl -X POST http://localhost:8080/api/v1/kanban-tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"title": "Write report", "description": "Generate Q1 report", "agent_task_id": "{agent-id}"}'
+
+# List all kanban tasks
+curl http://localhost:8080/api/v1/kanban-tasks
+
+# Filter by agent or status
+curl "http://localhost:8080/api/v1/kanban-tasks?agent_id={agent-id}&status=todo"
+```
+
+Statuses: `todo` → `progress` → `done`/`failed`. Done tasks older than 2 hours are hidden from the default list.
+
 ## How to Handle User Requests
 
 **"Remind me to X at Y time"** → Create a one-time scheduled task. Convert the time to UTC.
@@ -172,5 +195,9 @@ To give an agent access to **all** skills, set `global_skill_access: true` on th
 **"If task A fails, run task C"** → PATCH agent A with `{"on_failure_task_id": "<C's UUID>"}`.
 
 **"I want agents to know about X API/tool"** → Create a skill with relevant instructions and API credentials. Attach it to the agents that need it, or give it to all agents via `global_skill_access`.
+
+**"Assign this task to agent X"** → POST to `/api/v1/kanban-tasks` with the agent's ID. The agent picks it up automatically.
+
+**"What's agent X working on?"** → GET `/api/v1/kanban-tasks?agent_id={id}&status=progress`.
 
 **User describes a reusable capability** → Consider creating a skill. If an agent needs to use a specific API, the skill should contain endpoint references, authentication details, and examples.

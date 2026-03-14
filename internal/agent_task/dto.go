@@ -9,7 +9,7 @@ import (
 
 type CreateRequest struct {
 	Name              string     `json:"name"            validate:"required,min=1,max=255"`
-	CronExpression    string     `json:"cron_expression" validate:"required"`
+	CronExpression    *string    `json:"cron_expression"`
 	Prompt            string     `json:"prompt"          validate:"required"`
 	Enabled           *bool      `json:"enabled"`
 	MCPConfig         *string    `json:"mcp_config"`

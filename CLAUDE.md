@@ -36,6 +36,7 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - LOG_LEVEL (default: info): Logging level
 - MCP_CONFIG_PATH: Path to global MCP config file (mcp.json). Used as default for all task executions unless overridden per-task.
 - ALLOWED_TOOLS (default: `Bash(curl*),Bash(npx*),WebSearch,WebFetch,mcp__*`): Comma-separated list of tool patterns auto-approved for agent execution.
+- WORKSPACE_ROOT (default: `~/.maguro/workspaces`): Root directory for per-agent workspaces. Each agent gets `{WORKSPACE_ROOT}/{agent-id}/`.
 
 ## Project Layout
 - cmd/api/ — application entry point
@@ -44,6 +45,8 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - internal/task_execution/ — TaskExecution feature
 - internal/scheduled_task/ — One-time scheduled task endpoint
 - internal/skill/ — Skills feature (CRUD + agent-skill associations)
+- internal/kanban/ — Kanban task feature (CRUD, assigned to agents)
+- internal/kanban_executor/ — Kanban worker pool (one worker per agent, sequential processing)
 - internal/mcp_config/ — MCP server config management (read/write mcp.json)
 - internal/config/ — configuration loading
 - internal/database/ — database connection pool
@@ -79,6 +82,11 @@ Scheduled Claude Code SDK agent task orchestrator with a REST API.
 - GET /api/v1/agent-tasks/{taskId}/executions — list executions for a task
 - GET /api/v1/executions — list all executions (includes orphaned one-shot task logs)
 - GET /api/v1/executions/{id} — get execution by id
+- POST /api/v1/kanban-tasks — create kanban task (title, description, agent_task_id)
+- GET /api/v1/kanban-tasks — list kanban tasks (done >2h filtered, ?agent_id= ?status= filters)
+- GET /api/v1/kanban-tasks/{id} — get kanban task
+- PATCH /api/v1/kanban-tasks/{id} — update kanban task
+- DELETE /api/v1/kanban-tasks/{id} — delete kanban task
 
 ## Conventions
 - Use log/slog for all logging
